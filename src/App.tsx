@@ -13,6 +13,8 @@ import { Reminders } from "./screens/Reminders/Reminders";
 import { Paywall } from "./screens/Paywall/Paywall";
 import { Reconstitution } from "./screens/Reconstitution/Reconstitution";
 import { Vials } from "./screens/Vials/Vials";
+import { Library } from "./screens/Library/Library";
+import { Stacks } from "./screens/Stacks/Stacks";
 
 /** Root shell: hydrate local data once, then render the active screen + tab bar. */
 export function App() {
@@ -52,6 +54,10 @@ export function App() {
           <Reconstitution />
         ) : screen === "vials" ? (
           <Vials />
+        ) : screen === "library" ? (
+          <Library />
+        ) : screen === "stacks" ? (
+          <Stacks />
         ) : (
           <Paywall />
         )}

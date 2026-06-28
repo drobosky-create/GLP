@@ -68,6 +68,19 @@ export interface StrengthCheckin {
   value: number;
 }
 
+/**
+ * A USER-DEFINED stack — the user's own named grouping of catalog compounds they
+ * track together. Neutrality (§1.5/§9): stacks are created by the user and only
+ * reflect their own choices; the app ships NO preloaded or recommended stacks and
+ * never suggests a combination.
+ */
+export interface Stack {
+  id: string;
+  name: string;
+  compoundIds: string[];
+  createdAt: ISODateTime;
+}
+
 /** Compounded mode only — a reconstituted vial for inventory tracking. */
 export interface Vial {
   id: string;

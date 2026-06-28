@@ -17,13 +17,14 @@ import type {
   Medication,
   Reminder,
   SideEffectEntry,
+  Stack,
   StrengthCheckin,
   Vial,
   WeightEntry,
 } from "../types";
 
 const DB_NAME = "glp1-companion";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 // Object stores owned by this layer. Later phases append to this list and bump
 // DB_VERSION; onupgradeneeded creates any missing store idempotently.
@@ -38,6 +39,7 @@ const STORES = [
   "intakeEntries",
   "strengthCheckins",
   "vials",
+  "stacks",
 ] as const;
 type StoreName = (typeof STORES)[number];
 
@@ -149,5 +151,10 @@ export const db = {
     all: () => getAll<Vial>("vials"),
     save: (v: Vial) => put("vials", v),
     remove: (id: string) => remove("vials", id),
+  },
+  stacks: {
+    all: () => getAll<Stack>("stacks"),
+    save: (s: Stack) => put("stacks", s),
+    remove: (id: string) => remove("stacks", id),
   },
 };

@@ -7,6 +7,7 @@ import type {
   Medication,
   Reminder,
   SideEffectEntry,
+  Stack,
   StrengthCheckin,
   Vial,
   WeightEntry,
@@ -74,7 +75,9 @@ export type Screen =
   | "reminders"
   | "paywall"
   | "recon"
-  | "vials";
+  | "vials"
+  | "library"
+  | "stacks";
 
 const newId = (): string => crypto.randomUUID();
 const nowIso = (): string => new Date().toISOString();
@@ -148,6 +151,7 @@ interface AppState {
   intakeEntries: IntakeEntry[];
   strengthCheckins: StrengthCheckin[];
   vials: Vial[];
+  stacks: Stack[];
   reminders: Reminder[];
 
   // Compounded-mode feature flag (§2; gated on legal review, §9).
@@ -183,6 +187,8 @@ interface AppState {
   deleteStrength: (id: string) => Promise<void>;
   addVial: (input: AddVialInput) => Promise<void>;
   deleteVial: (id: string) => Promise<void>;
+  saveStack: (name: string, compoundIds: string[], id?: string) => Promise<void>;
+  deleteStack: (id: string) => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -200,6 +206,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   intakeEntries: [],
   strengthCheckins: [],
   vials: [],
+  stacks: [],
   reminders: DEFAULT_REMINDERS,
   compoundedEnabled: COMPOUNDED_ENABLED,
   entitlement: null,
@@ -216,6 +223,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       intakeEntries,
       strengthCheckins,
       vials,
+      stacks,
       storedReminders,
       entitlement,
     ] = await Promise.all([
@@ -226,6 +234,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       db.intakeEntries.all(),
       db.strengthCheckins.all(),
       db.vials.all(),
+      db.stacks.all(),
       db.reminders.all(),
       db.entitlement.get(),
     ]);
@@ -242,6 +251,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       intakeEntries: intakeEntries.sort(byNewest),
       strengthCheckins: strengthCheckins.sort(byNewest),
       vials: vials.sort((a, b) => b.reconDate.localeCompare(a.reconDate)),
+      stacks: stacks.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
       reminders,
       entitlement: entitlement ?? null,
       premium: computeIsPremium(entitlement ?? null, now),
@@ -400,6 +410,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteVial: async (id) => {
     await db.vials.remove(id);
     set((s) => ({ vials: s.vials.filter((v) => v.id !== id) }));
+  },
+
+  saveStack: async (name, compoundIds, id) => {
+    const existing = id ? get().stacks.find((s) => s.id === id) : undefined;
+    const stack: Stack = {
+      id: existing?.id ?? newId(),
+      name,
+      compoundIds,
+      createdAt: existing?.createdAt ?? nowIso(),
+    };
+    await db.stacks.save(stack);
+    set((s) => {
+      const others = s.stacks.filter((x) => x.id !== stack.id);
+      return {
+        stacks: [stack, ...others].sort((a, b) =>
+          b.createdAt.localeCompare(a.createdAt),
+        ),
+      };
+    });
+  },
+
+  deleteStack: async (id) => {
+    await db.stacks.remove(id);
+    set((s) => ({ stacks: s.stacks.filter((x) => x.id !== id) }));
   },
 }));
 
