@@ -3,11 +3,37 @@ import type {
   AppMode,
   DoseEvent,
   Medication,
+  Reminder,
   SideEffectEntry,
   WeightEntry,
 } from "../types";
 import { db } from "../lib/db";
 import { getCompound } from "../lib/peptides";
+import { scheduleReminder } from "../lib/notify";
+
+// Neutral defaults — both off until the user opts in. Copy reminds the user to LOG,
+// never to take a medication (§1.5). Dose = weekly (GLP-1 cadence); weigh-in = daily.
+const DEFAULT_REMINDERS: Reminder[] = [
+  {
+    id: "dose",
+    kind: "dose",
+    enabled: false,
+    hour: 9,
+    minute: 0,
+    weekday: 1,
+    title: "Dose reminder",
+    body: "A reminder to log your dose.",
+  },
+  {
+    id: "weighin",
+    kind: "weighin",
+    enabled: false,
+    hour: 8,
+    minute: 0,
+    title: "Weigh-in reminder",
+    body: "A reminder to log your weight.",
+  },
+];
 
 /**
  * The single app store (PRD §7.1, §12) — the one source of UI state. Screens read
@@ -16,7 +42,13 @@ import { getCompound } from "../lib/peptides";
  * touch db.ts directly.
  */
 
-export type Screen = "home" | "dose" | "weight" | "effects" | "sites";
+export type Screen =
+  | "home"
+  | "dose"
+  | "weight"
+  | "effects"
+  | "sites"
+  | "reminders";
 
 const newId = (): string => crypto.randomUUID();
 const nowIso = (): string => new Date().toISOString();
@@ -61,8 +93,11 @@ interface AppState {
   doseEvents: DoseEvent[];
   weightEntries: WeightEntry[];
   sideEffects: SideEffectEntry[];
+  reminders: Reminder[];
 
   hydrate: () => Promise<void>;
+
+  saveReminder: (reminder: Reminder) => Promise<void>;
 
   logDose: (input: LogDoseInput) => Promise<void>;
   deleteDose: (id: string) => Promise<void>;
@@ -84,22 +119,42 @@ export const useAppStore = create<AppState>((set, get) => ({
   doseEvents: [],
   weightEntries: [],
   sideEffects: [],
+  reminders: DEFAULT_REMINDERS,
 
   hydrate: async () => {
-    const [medications, doseEvents, weightEntries, sideEffects] =
+    const [medications, doseEvents, weightEntries, sideEffects, storedReminders] =
       await Promise.all([
         db.medications.all(),
         db.doseEvents.all(),
         db.weightEntries.all(),
         db.sideEffects.all(),
+        db.reminders.all(),
       ]);
+    // Always surface both reminder kinds; overlay any stored prefs onto defaults.
+    const reminders = DEFAULT_REMINDERS.map(
+      (d) => storedReminders.find((r) => r.id === d.id) ?? d,
+    );
     set({
       medications,
       doseEvents: doseEvents.sort(byNewest),
       weightEntries: weightEntries.sort(byNewest),
       sideEffects: sideEffects.sort(byNewest),
+      reminders,
       hydrated: true,
     });
+    // Re-arm enabled reminders (web timers don't survive a reload; native is a
+    // cheap reschedule of the same ids).
+    for (const r of reminders) {
+      if (r.enabled) void scheduleReminder(r);
+    }
+  },
+
+  saveReminder: async (reminder) => {
+    await db.reminders.save(reminder);
+    await scheduleReminder(reminder); // schedules if enabled, cancels if not
+    set((s) => ({
+      reminders: s.reminders.map((r) => (r.id === reminder.id ? reminder : r)),
+    }));
   },
 
   logDose: async (input) => {

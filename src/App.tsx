@@ -6,6 +6,7 @@ import { Log } from "./screens/Log/Log";
 import { Weight } from "./screens/Weight/Weight";
 import { Effects } from "./screens/Effects/Effects";
 import { InjectionSite } from "./screens/InjectionSite/InjectionSite";
+import { Reminders } from "./screens/Reminders/Reminders";
 
 /** Root shell: hydrate local data once, then render the active screen + tab bar. */
 export function App() {
@@ -31,8 +32,10 @@ export function App() {
           <Weight />
         ) : screen === "effects" ? (
           <Effects />
-        ) : (
+        ) : screen === "sites" ? (
           <InjectionSite />
+        ) : (
+          <Reminders />
         )}
       </main>
       <TabBar active={screen} onSelect={setScreen} />

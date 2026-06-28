@@ -78,6 +78,22 @@ export interface Vial {
   discardAfter: ISODateTime;
 }
 
+/**
+ * A scheduled reminder (PRD §3 item 5). Time-based and local — dose reminders are
+ * weekly (a weekday is set), weigh-in reminders are daily (no weekday). Copy is
+ * neutral: it reminds the user to LOG, it never instructs them to take a medication.
+ */
+export interface Reminder {
+  id: string; // stable per kind ("dose" | "weighin")
+  kind: "dose" | "weighin";
+  enabled: boolean;
+  hour: number; // 0–23, local time
+  minute: number; // 0–59
+  weekday?: number; // ISO 1=Mon … 7=Sun; set => weekly, unset => daily
+  title: string;
+  body: string;
+}
+
 /** Subscription tier the entitlement grants. */
 export type EntitlementTier = "free" | "trial" | "premium";
 

@@ -34,6 +34,9 @@ export function Home() {
         <Button onClick={() => setScreen("weight")}>Log weight</Button>
         <Button onClick={() => setScreen("effects")}>Log side effect</Button>
         <Button onClick={() => setScreen("sites")}>Injection sites</Button>
+        <Button variant="ghost" onClick={() => setScreen("reminders")}>
+          Reminders
+        </Button>
       </div>
 
       <Card title="At a glance">
