@@ -8,6 +8,7 @@ import type {
   Reminder,
   SideEffectEntry,
   StrengthCheckin,
+  Vial,
   WeightEntry,
 } from "../types";
 import { db } from "../lib/db";
@@ -71,7 +72,9 @@ export type Screen =
   | "muscle"
   | "curve"
   | "reminders"
-  | "paywall";
+  | "paywall"
+  | "recon"
+  | "vials";
 
 const newId = (): string => crypto.randomUUID();
 const nowIso = (): string => new Date().toISOString();
@@ -113,6 +116,19 @@ export interface LogStrengthInput {
   value: number;
 }
 
+export interface AddVialInput {
+  compoundId: string;
+  strengthMg: number;
+  bacWaterMl: number;
+  reconDate: string;
+  discardAfter: string;
+}
+
+// Compounded mode (PRD §2) is feature-flagged OFF by default — it ships only after
+// the legal-review checkpoint (§9). Enable per-build with VITE_COMPOUNDED_MODE=true.
+const COMPOUNDED_ENABLED =
+  (import.meta.env.VITE_COMPOUNDED_MODE as string) === "true";
+
 interface AppState {
   // Onboarding mode (§2) — null until chosen.
   mode: AppMode | null;
@@ -131,7 +147,11 @@ interface AppState {
   sideEffects: SideEffectEntry[];
   intakeEntries: IntakeEntry[];
   strengthCheckins: StrengthCheckin[];
+  vials: Vial[];
   reminders: Reminder[];
+
+  // Compounded-mode feature flag (§2; gated on legal review, §9).
+  compoundedEnabled: boolean;
 
   // Entitlement (§6). `premium` / `trialDaysLeft` are derived snapshots kept in
   // sync via recomputeEntitlement so screens read them reactively without touching
@@ -161,6 +181,8 @@ interface AppState {
   deleteIntake: (id: string) => Promise<void>;
   logStrength: (input: LogStrengthInput) => Promise<void>;
   deleteStrength: (id: string) => Promise<void>;
+  addVial: (input: AddVialInput) => Promise<void>;
+  deleteVial: (id: string) => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -177,7 +199,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   sideEffects: [],
   intakeEntries: [],
   strengthCheckins: [],
+  vials: [],
   reminders: DEFAULT_REMINDERS,
+  compoundedEnabled: COMPOUNDED_ENABLED,
   entitlement: null,
   premium: false,
   trialDaysLeft: null,
@@ -191,6 +215,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       sideEffects,
       intakeEntries,
       strengthCheckins,
+      vials,
       storedReminders,
       entitlement,
     ] = await Promise.all([
@@ -200,6 +225,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       db.sideEffects.all(),
       db.intakeEntries.all(),
       db.strengthCheckins.all(),
+      db.vials.all(),
       db.reminders.all(),
       db.entitlement.get(),
     ]);
@@ -215,6 +241,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       sideEffects: sideEffects.sort(byNewest),
       intakeEntries: intakeEntries.sort(byNewest),
       strengthCheckins: strengthCheckins.sort(byNewest),
+      vials: vials.sort((a, b) => b.reconDate.localeCompare(a.reconDate)),
       reminders,
       entitlement: entitlement ?? null,
       premium: computeIsPremium(entitlement ?? null, now),
@@ -358,6 +385,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({
       strengthCheckins: s.strengthCheckins.filter((e) => e.id !== id),
     }));
+  },
+
+  addVial: async (input) => {
+    const vial: Vial = { id: newId(), ...input };
+    await db.vials.save(vial);
+    set((s) => ({
+      vials: [vial, ...s.vials].sort((a, b) =>
+        b.reconDate.localeCompare(a.reconDate),
+      ),
+    }));
+  },
+
+  deleteVial: async (id) => {
+    await db.vials.remove(id);
+    set((s) => ({ vials: s.vials.filter((v) => v.id !== id) }));
   },
 }));
 

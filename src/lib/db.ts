@@ -18,11 +18,12 @@ import type {
   Reminder,
   SideEffectEntry,
   StrengthCheckin,
+  Vial,
   WeightEntry,
 } from "../types";
 
 const DB_NAME = "glp1-companion";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 // Object stores owned by this layer. Later phases append to this list and bump
 // DB_VERSION; onupgradeneeded creates any missing store idempotently.
@@ -36,6 +37,7 @@ const STORES = [
   "billingEvents",
   "intakeEntries",
   "strengthCheckins",
+  "vials",
 ] as const;
 type StoreName = (typeof STORES)[number];
 
@@ -142,5 +144,10 @@ export const db = {
     all: () => getAll<StrengthCheckin>("strengthCheckins"),
     save: (e: StrengthCheckin) => put("strengthCheckins", e),
     remove: (id: string) => remove("strengthCheckins", id),
+  },
+  vials: {
+    all: () => getAll<Vial>("vials"),
+    save: (v: Vial) => put("vials", v),
+    remove: (id: string) => remove("vials", id),
   },
 };

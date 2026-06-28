@@ -11,6 +11,8 @@ import { Muscle } from "./screens/Muscle/Muscle";
 import { Curve } from "./screens/Curve/Curve";
 import { Reminders } from "./screens/Reminders/Reminders";
 import { Paywall } from "./screens/Paywall/Paywall";
+import { Reconstitution } from "./screens/Reconstitution/Reconstitution";
+import { Vials } from "./screens/Vials/Vials";
 
 /** Root shell: hydrate local data once, then render the active screen + tab bar. */
 export function App() {
@@ -46,6 +48,10 @@ export function App() {
           <Curve />
         ) : screen === "reminders" ? (
           <Reminders />
+        ) : screen === "recon" ? (
+          <Reconstitution />
+        ) : screen === "vials" ? (
+          <Vials />
         ) : (
           <Paywall />
         )}

@@ -14,6 +14,7 @@ export function Home() {
   const sideEffects = useAppStore((s) => s.sideEffects);
   const premium = useAppStore((s) => s.premium);
   const trialDaysLeft = useAppStore((s) => s.trialDaysLeft);
+  const compoundedEnabled = useAppStore((s) => s.compoundedEnabled);
 
   const latestWeight = weightEntries[0];
   const latestDose = doseEvents[0];
@@ -62,6 +63,20 @@ export function Home() {
           Start 7-day free trial
         </Button>
       )}
+
+      {compoundedEnabled ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-muted">Compounded tools</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="ghost" onClick={() => setScreen("recon")}>
+              Reconstitution
+            </Button>
+            <Button variant="ghost" onClick={() => setScreen("vials")}>
+              Vial inventory
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <Card title="At a glance">
         <ul className="flex flex-col gap-2 text-sm">
