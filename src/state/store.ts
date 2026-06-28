@@ -48,6 +48,7 @@ export type Screen =
   | "weight"
   | "effects"
   | "sites"
+  | "report"
   | "reminders";
 
 const newId = (): string => crypto.randomUUID();

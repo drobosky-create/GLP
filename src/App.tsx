@@ -6,6 +6,7 @@ import { Log } from "./screens/Log/Log";
 import { Weight } from "./screens/Weight/Weight";
 import { Effects } from "./screens/Effects/Effects";
 import { InjectionSite } from "./screens/InjectionSite/InjectionSite";
+import { Report } from "./screens/Report/Report";
 import { Reminders } from "./screens/Reminders/Reminders";
 
 /** Root shell: hydrate local data once, then render the active screen + tab bar. */
@@ -34,6 +35,8 @@ export function App() {
           <Effects />
         ) : screen === "sites" ? (
           <InjectionSite />
+        ) : screen === "report" ? (
+          <Report />
         ) : (
           <Reminders />
         )}

@@ -39,6 +39,8 @@ export function Home() {
         </Button>
       </div>
 
+      <Button onClick={() => setScreen("report")}>View correlation report</Button>
+
       <Card title="At a glance">
         <ul className="flex flex-col gap-2 text-sm">
           <li className="flex justify-between">
