@@ -57,6 +57,11 @@ export function Home() {
           My stacks
         </Button>
       </div>
+      {compoundedEnabled ? (
+        <Button variant="ghost" onClick={() => setScreen("education")}>
+          Learn
+        </Button>
+      ) : null}
 
       {premium ? (
         <p className="text-center text-xs text-success">

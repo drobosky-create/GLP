@@ -114,6 +114,12 @@ export function Stacks() {
         )}
       </Card>
 
+      {compoundedEnabled ? (
+        <Button variant="ghost" onClick={() => setScreen("education")}>
+          Learn about stacks
+        </Button>
+      ) : null}
+
       <Button variant="ghost" onClick={() => setScreen("home")}>
         Back to Home
       </Button>

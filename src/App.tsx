@@ -15,6 +15,7 @@ import { Reconstitution } from "./screens/Reconstitution/Reconstitution";
 import { Vials } from "./screens/Vials/Vials";
 import { Library } from "./screens/Library/Library";
 import { Stacks } from "./screens/Stacks/Stacks";
+import { Education } from "./screens/Education/Education";
 
 /** Root shell: hydrate local data once, then render the active screen + tab bar. */
 export function App() {
@@ -58,6 +59,8 @@ export function App() {
           <Library />
         ) : screen === "stacks" ? (
           <Stacks />
+        ) : screen === "education" ? (
+          <Education />
         ) : (
           <Paywall />
         )}

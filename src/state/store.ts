@@ -77,7 +77,8 @@ export type Screen =
   | "recon"
   | "vials"
   | "library"
-  | "stacks";
+  | "stacks"
+  | "education";
 
 const newId = (): string => crypto.randomUUID();
 const nowIso = (): string => new Date().toISOString();
