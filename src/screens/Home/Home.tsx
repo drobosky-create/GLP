@@ -12,6 +12,8 @@ export function Home() {
   const doseEvents = useAppStore((s) => s.doseEvents);
   const weightEntries = useAppStore((s) => s.weightEntries);
   const sideEffects = useAppStore((s) => s.sideEffects);
+  const premium = useAppStore((s) => s.premium);
+  const trialDaysLeft = useAppStore((s) => s.trialDaysLeft);
 
   const latestWeight = weightEntries[0];
   const latestDose = doseEvents[0];
@@ -40,6 +42,20 @@ export function Home() {
       </div>
 
       <Button onClick={() => setScreen("report")}>View correlation report</Button>
+
+      {premium ? (
+        <p className="text-center text-xs text-success">
+          {trialDaysLeft != null
+            ? `Trial active — ${trialDaysLeft} day${
+                trialDaysLeft === 1 ? "" : "s"
+              } left`
+            : "Premium active"}
+        </p>
+      ) : (
+        <Button variant="ghost" onClick={() => setScreen("paywall")}>
+          Start 7-day free trial
+        </Button>
+      )}
 
       <Card title="At a glance">
         <ul className="flex flex-col gap-2 text-sm">

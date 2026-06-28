@@ -103,3 +103,20 @@ export interface Entitlement {
   trialEnd?: ISODateTime;
   stripeCustomerId?: string;
 }
+
+/**
+ * A captured billing event. PRD §6 wants link-purchase analytics from day one and
+ * the architecture ready to switch on Apple's Link-Entitlement reporting later — so
+ * every checkout/IAP/trial action is recorded locally as one of these.
+ */
+export interface BillingEvent {
+  id: string;
+  datetime: ISODateTime;
+  type:
+    | "trial_start"
+    | "checkout_start"
+    | "iap_attempt"
+    | "restore_attempt";
+  channel?: "stripe_link" | "store_iap";
+  plan?: string;
+}

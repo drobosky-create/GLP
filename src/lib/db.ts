@@ -10,7 +10,9 @@
  */
 
 import type {
+  BillingEvent,
   DoseEvent,
+  Entitlement,
   Medication,
   Reminder,
   SideEffectEntry,
@@ -18,7 +20,7 @@ import type {
 } from "../types";
 
 const DB_NAME = "glp1-companion";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 // Object stores owned by this layer. Later phases append to this list and bump
 // DB_VERSION; onupgradeneeded creates any missing store idempotently.
@@ -28,6 +30,8 @@ const STORES = [
   "weightEntries",
   "sideEffectEntries",
   "reminders",
+  "entitlement",
+  "billingEvents",
 ] as const;
 type StoreName = (typeof STORES)[number];
 
@@ -111,5 +115,18 @@ export const db = {
     all: () => getAll<Reminder>("reminders"),
     save: (r: Reminder) => put("reminders", r),
     remove: (id: string) => remove("reminders", id),
+  },
+  // Single-record store keyed by a fixed id; the extra id is storage-internal.
+  entitlement: {
+    get: async (): Promise<Entitlement | undefined> => {
+      const all = await getAll<Entitlement & { id: string }>("entitlement");
+      return all[0];
+    },
+    save: (e: Entitlement) => put("entitlement", { id: "current", ...e }),
+    clear: () => remove("entitlement", "current"),
+  },
+  billingEvents: {
+    all: () => getAll<BillingEvent>("billingEvents"),
+    save: (ev: BillingEvent) => put("billingEvents", ev),
   },
 };

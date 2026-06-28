@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../../state/store";
 import { buildReport, generateReportPdf } from "../../lib/report";
 import { ReportChart } from "../../components/ReportChart";
@@ -12,13 +12,49 @@ export function Report() {
   const doseEvents = useAppStore((s) => s.doseEvents);
   const weightEntries = useAppStore((s) => s.weightEntries);
   const sideEffects = useAppStore((s) => s.sideEffects);
+  const premium = useAppStore((s) => s.premium);
+  const recompute = useAppStore((s) => s.recomputeEntitlement);
   const setScreen = useAppStore((s) => s.setScreen);
   const [exporting, setExporting] = useState(false);
+
+  // Catch trial expiry that may have elapsed since launch.
+  useEffect(() => {
+    recompute();
+  }, [recompute]);
 
   const model = useMemo(
     () => buildReport({ doseEvents, weightEntries, sideEffects }),
     [doseEvents, weightEntries, sideEffects],
   );
+
+  // The Correlation Report + export is a premium feature (§6). Logging stays free.
+  if (!premium) {
+    return (
+      <div className="flex flex-col gap-4">
+        <header className="flex flex-col gap-1">
+          <h1 className="font-display text-xl font-semibold text-text">
+            Correlation report
+          </h1>
+          <p className="text-xs text-muted">
+            The report that maps your side effects and weight against your dose
+            timeline — the one to bring to your provider.
+          </p>
+        </header>
+        <Card title="A premium feature">
+          <p className="mb-3 text-sm text-muted">
+            Your dose, weight, and side-effect logging is free. The correlation
+            report and one-page PDF export are part of Premium.
+          </p>
+          <Button onClick={() => setScreen("paywall")}>
+            Start free trial to unlock
+          </Button>
+        </Card>
+        <Button variant="ghost" onClick={() => setScreen("home")}>
+          Back to Home
+        </Button>
+      </div>
+    );
+  }
 
   const onExport = async () => {
     setExporting(true);

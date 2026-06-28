@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   AppMode,
   DoseEvent,
+  Entitlement,
   Medication,
   Reminder,
   SideEffectEntry,
@@ -10,6 +11,22 @@ import type {
 import { db } from "../lib/db";
 import { getCompound } from "../lib/peptides";
 import { scheduleReminder } from "../lib/notify";
+import {
+  PLANS,
+  captureBillingEvent,
+  isPremium as computeIsPremium,
+  openCheckout as billingOpenCheckout,
+  purchaseViaStore as billingPurchaseViaStore,
+  restorePurchases as billingRestore,
+  startTrial as makeTrial,
+  trialDaysLeft as computeTrialDaysLeft,
+  type BillingResult,
+  type Plan,
+} from "../lib/billing";
+
+// Re-exported so screens can type plans without importing the billing module
+// directly (PRD §7.1: screens never touch billing).
+export type { Plan, BillingResult };
 
 // Neutral defaults — both off until the user opts in. Copy reminds the user to LOG,
 // never to take a medication (§1.5). Dose = weekly (GLP-1 cadence); weigh-in = daily.
@@ -49,7 +66,8 @@ export type Screen =
   | "effects"
   | "sites"
   | "report"
-  | "reminders";
+  | "reminders"
+  | "paywall";
 
 const newId = (): string => crypto.randomUUID();
 const nowIso = (): string => new Date().toISOString();
@@ -96,7 +114,21 @@ interface AppState {
   sideEffects: SideEffectEntry[];
   reminders: Reminder[];
 
+  // Entitlement (§6). `premium` / `trialDaysLeft` are derived snapshots kept in
+  // sync via recomputeEntitlement so screens read them reactively without touching
+  // the billing module.
+  entitlement: Entitlement | null;
+  premium: boolean;
+  trialDaysLeft: number | null;
+  plans: Plan[];
+
   hydrate: () => Promise<void>;
+
+  recomputeEntitlement: () => void;
+  startTrial: () => Promise<void>;
+  openCheckout: (planId: Plan["id"]) => Promise<BillingResult>;
+  purchaseViaStore: (planId: Plan["id"]) => Promise<BillingResult>;
+  restorePurchases: () => Promise<BillingResult>;
 
   saveReminder: (reminder: Reminder) => Promise<void>;
 
@@ -121,26 +153,41 @@ export const useAppStore = create<AppState>((set, get) => ({
   weightEntries: [],
   sideEffects: [],
   reminders: DEFAULT_REMINDERS,
+  entitlement: null,
+  premium: false,
+  trialDaysLeft: null,
+  plans: PLANS,
 
   hydrate: async () => {
-    const [medications, doseEvents, weightEntries, sideEffects, storedReminders] =
-      await Promise.all([
-        db.medications.all(),
-        db.doseEvents.all(),
-        db.weightEntries.all(),
-        db.sideEffects.all(),
-        db.reminders.all(),
-      ]);
+    const [
+      medications,
+      doseEvents,
+      weightEntries,
+      sideEffects,
+      storedReminders,
+      entitlement,
+    ] = await Promise.all([
+      db.medications.all(),
+      db.doseEvents.all(),
+      db.weightEntries.all(),
+      db.sideEffects.all(),
+      db.reminders.all(),
+      db.entitlement.get(),
+    ]);
     // Always surface both reminder kinds; overlay any stored prefs onto defaults.
     const reminders = DEFAULT_REMINDERS.map(
       (d) => storedReminders.find((r) => r.id === d.id) ?? d,
     );
+    const now = Date.now();
     set({
       medications,
       doseEvents: doseEvents.sort(byNewest),
       weightEntries: weightEntries.sort(byNewest),
       sideEffects: sideEffects.sort(byNewest),
       reminders,
+      entitlement: entitlement ?? null,
+      premium: computeIsPremium(entitlement ?? null, now),
+      trialDaysLeft: computeTrialDaysLeft(entitlement ?? null, now),
       hydrated: true,
     });
     // Re-arm enabled reminders (web timers don't survive a reload; native is a
@@ -148,6 +195,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     for (const r of reminders) {
       if (r.enabled) void scheduleReminder(r);
     }
+  },
+
+  recomputeEntitlement: () => {
+    const now = Date.now();
+    const ent = get().entitlement;
+    set({
+      premium: computeIsPremium(ent, now),
+      trialDaysLeft: computeTrialDaysLeft(ent, now),
+    });
+  },
+
+  startTrial: async () => {
+    const ent = makeTrial(Date.now());
+    await db.entitlement.save(ent);
+    await captureBillingEvent({ type: "trial_start" });
+    set({ entitlement: ent });
+    get().recomputeEntitlement();
+  },
+
+  openCheckout: async (planId) => {
+    const plan = PLANS.find((p) => p.id === planId);
+    if (!plan) return { ok: false, reason: "Unknown plan." };
+    const res = await billingOpenCheckout(plan);
+    get().recomputeEntitlement();
+    return res;
+  },
+
+  purchaseViaStore: async (planId) => {
+    const plan = PLANS.find((p) => p.id === planId);
+    if (!plan) return { ok: false, reason: "Unknown plan." };
+    return billingPurchaseViaStore(plan);
+  },
+
+  restorePurchases: async () => {
+    const res = await billingRestore();
+    get().recomputeEntitlement();
+    return res;
   },
 
   saveReminder: async (reminder) => {

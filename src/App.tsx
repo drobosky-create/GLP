@@ -8,6 +8,7 @@ import { Effects } from "./screens/Effects/Effects";
 import { InjectionSite } from "./screens/InjectionSite/InjectionSite";
 import { Report } from "./screens/Report/Report";
 import { Reminders } from "./screens/Reminders/Reminders";
+import { Paywall } from "./screens/Paywall/Paywall";
 
 /** Root shell: hydrate local data once, then render the active screen + tab bar. */
 export function App() {
@@ -37,8 +38,10 @@ export function App() {
           <InjectionSite />
         ) : screen === "report" ? (
           <Report />
-        ) : (
+        ) : screen === "reminders" ? (
           <Reminders />
+        ) : (
+          <Paywall />
         )}
       </main>
       <TabBar active={screen} onSelect={setScreen} />
