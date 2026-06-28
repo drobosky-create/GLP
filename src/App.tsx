@@ -7,6 +7,7 @@ import { Weight } from "./screens/Weight/Weight";
 import { Effects } from "./screens/Effects/Effects";
 import { InjectionSite } from "./screens/InjectionSite/InjectionSite";
 import { Report } from "./screens/Report/Report";
+import { Muscle } from "./screens/Muscle/Muscle";
 import { Reminders } from "./screens/Reminders/Reminders";
 import { Paywall } from "./screens/Paywall/Paywall";
 
@@ -38,6 +39,8 @@ export function App() {
           <InjectionSite />
         ) : screen === "report" ? (
           <Report />
+        ) : screen === "muscle" ? (
+          <Muscle />
         ) : screen === "reminders" ? (
           <Reminders />
         ) : (

@@ -42,6 +42,9 @@ export function Home() {
       </div>
 
       <Button onClick={() => setScreen("report")}>View correlation report</Button>
+      <Button variant="ghost" onClick={() => setScreen("muscle")}>
+        Muscle preservation
+      </Button>
 
       {premium ? (
         <p className="text-center text-xs text-success">

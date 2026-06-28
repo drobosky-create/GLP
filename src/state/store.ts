@@ -3,9 +3,11 @@ import type {
   AppMode,
   DoseEvent,
   Entitlement,
+  IntakeEntry,
   Medication,
   Reminder,
   SideEffectEntry,
+  StrengthCheckin,
   WeightEntry,
 } from "../types";
 import { db } from "../lib/db";
@@ -66,6 +68,7 @@ export type Screen =
   | "effects"
   | "sites"
   | "report"
+  | "muscle"
   | "reminders"
   | "paywall";
 
@@ -96,6 +99,19 @@ export interface LogSideEffectInput {
   severity: number;
 }
 
+export interface LogIntakeInput {
+  datetime: string;
+  proteinG?: number;
+  fiberG?: number;
+  waterMl?: number;
+}
+
+export interface LogStrengthInput {
+  datetime: string;
+  metric: string;
+  value: number;
+}
+
 interface AppState {
   // Onboarding mode (§2) — null until chosen.
   mode: AppMode | null;
@@ -112,6 +128,8 @@ interface AppState {
   doseEvents: DoseEvent[];
   weightEntries: WeightEntry[];
   sideEffects: SideEffectEntry[];
+  intakeEntries: IntakeEntry[];
+  strengthCheckins: StrengthCheckin[];
   reminders: Reminder[];
 
   // Entitlement (§6). `premium` / `trialDaysLeft` are derived snapshots kept in
@@ -138,6 +156,10 @@ interface AppState {
   deleteWeight: (id: string) => Promise<void>;
   logSideEffect: (input: LogSideEffectInput) => Promise<void>;
   deleteSideEffect: (id: string) => Promise<void>;
+  logIntake: (input: LogIntakeInput) => Promise<void>;
+  deleteIntake: (id: string) => Promise<void>;
+  logStrength: (input: LogStrengthInput) => Promise<void>;
+  deleteStrength: (id: string) => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -152,6 +174,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   doseEvents: [],
   weightEntries: [],
   sideEffects: [],
+  intakeEntries: [],
+  strengthCheckins: [],
   reminders: DEFAULT_REMINDERS,
   entitlement: null,
   premium: false,
@@ -164,6 +188,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       doseEvents,
       weightEntries,
       sideEffects,
+      intakeEntries,
+      strengthCheckins,
       storedReminders,
       entitlement,
     ] = await Promise.all([
@@ -171,6 +197,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       db.doseEvents.all(),
       db.weightEntries.all(),
       db.sideEffects.all(),
+      db.intakeEntries.all(),
+      db.strengthCheckins.all(),
       db.reminders.all(),
       db.entitlement.get(),
     ]);
@@ -184,6 +212,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       doseEvents: doseEvents.sort(byNewest),
       weightEntries: weightEntries.sort(byNewest),
       sideEffects: sideEffects.sort(byNewest),
+      intakeEntries: intakeEntries.sort(byNewest),
+      strengthCheckins: strengthCheckins.sort(byNewest),
       reminders,
       entitlement: entitlement ?? null,
       premium: computeIsPremium(entitlement ?? null, now),
@@ -297,6 +327,36 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteSideEffect: async (id) => {
     await db.sideEffects.remove(id);
     set((s) => ({ sideEffects: s.sideEffects.filter((e) => e.id !== id) }));
+  },
+
+  logIntake: async (input) => {
+    const entry: IntakeEntry = { id: newId(), ...input };
+    await db.intakeEntries.save(entry);
+    set((s) => ({
+      intakeEntries: [entry, ...s.intakeEntries].sort(byNewest),
+    }));
+  },
+
+  deleteIntake: async (id) => {
+    await db.intakeEntries.remove(id);
+    set((s) => ({
+      intakeEntries: s.intakeEntries.filter((e) => e.id !== id),
+    }));
+  },
+
+  logStrength: async (input) => {
+    const entry: StrengthCheckin = { id: newId(), ...input };
+    await db.strengthCheckins.save(entry);
+    set((s) => ({
+      strengthCheckins: [entry, ...s.strengthCheckins].sort(byNewest),
+    }));
+  },
+
+  deleteStrength: async (id) => {
+    await db.strengthCheckins.remove(id);
+    set((s) => ({
+      strengthCheckins: s.strengthCheckins.filter((e) => e.id !== id),
+    }));
   },
 }));
 
