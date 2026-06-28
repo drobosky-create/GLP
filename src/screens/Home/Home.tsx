@@ -15,6 +15,7 @@ export function Home() {
   const premium = useAppStore((s) => s.premium);
   const trialDaysLeft = useAppStore((s) => s.trialDaysLeft);
   const compoundedEnabled = useAppStore((s) => s.compoundedEnabled);
+  const educationEnabled = useAppStore((s) => s.educationEnabled);
 
   const latestWeight = weightEntries[0];
   const latestDose = doseEvents[0];
@@ -52,7 +53,7 @@ export function Home() {
       <Button variant="ghost" onClick={() => setScreen("stacks")}>
         My stacks
       </Button>
-      {compoundedEnabled ? (
+      {educationEnabled ? (
         <Button variant="ghost" onClick={() => setScreen("education")}>
           Learn
         </Button>

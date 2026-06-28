@@ -1,26 +1,43 @@
-import { useState } from "react";
+import { useMemo } from "react";
 import { useAppStore } from "../../state/store";
 import { Button, Card } from "../../components/Form";
 import {
+  CATEGORY_ORDER,
   EDUCATION_ARTICLES,
   EDUCATION_REVIEW_STATUS,
-  type Article,
 } from "./content";
 
 /**
- * Learn — education-only surface (PRD §1.5/§5/§9). Describes general information;
- * recommends no substance, dose, or combination. Gated behind compounded mode,
- * which is itself gated pending legal review. Seed copy is draft pending review.
+ * Learn — education-only surface (PRD §1.5/§5/§9). Describes published research with
+ * sources; recommends no substance, dose, or combination. Gated behind its own flag
+ * pending clinical+legal review; research-peptide articles additionally require
+ * compounded mode. Articles are grouped by category to stay scannable.
  */
 export function Education() {
   const setScreen = useAppStore((s) => s.setScreen);
+  const educationEnabled = useAppStore((s) => s.educationEnabled);
   const compoundedEnabled = useAppStore((s) => s.compoundedEnabled);
-  const [open, setOpen] = useState<Article | null>(null);
+  const openId = useAppStore((s) => s.educationArticleId);
+  const setOpen = useAppStore((s) => s.setEducationArticle);
 
-  if (!compoundedEnabled) {
+  const visible = useMemo(
+    () =>
+      EDUCATION_ARTICLES.filter((a) => !a.compoundedOnly || compoundedEnabled),
+    [compoundedEnabled],
+  );
+  const groups = useMemo(
+    () =>
+      CATEGORY_ORDER.map(
+        (cat) => [cat, visible.filter((a) => a.category === cat)] as const,
+      ).filter(([, items]) => items.length > 0),
+    [visible],
+  );
+  const open = visible.find((a) => a.id === openId) ?? null;
+
+  if (!educationEnabled) {
     return (
       <div className="flex flex-col gap-4">
-        <header className="flex flex-col gap-1">
+        <header>
           <h1 className="font-display text-xl font-semibold text-text">Learn</h1>
         </header>
         <Card>
@@ -86,19 +103,22 @@ export function Education() {
           </Button>
         </>
       ) : (
-        <>
-          {EDUCATION_ARTICLES.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              onClick={() => setOpen(a)}
-              className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4 text-left"
-            >
-              <span className="font-display text-sm text-text">{a.title}</span>
-              <span className="text-xs text-muted">{a.summary}</span>
-            </button>
-          ))}
-        </>
+        groups.map(([category, items]) => (
+          <div key={category} className="flex flex-col gap-2">
+            <p className="text-xs text-muted">{category}</p>
+            {items.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setOpen(a.id)}
+                className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4 text-left"
+              >
+                <span className="font-display text-sm text-text">{a.title}</span>
+                <span className="text-xs text-muted">{a.summary}</span>
+              </button>
+            ))}
+          </div>
+        ))
       )}
 
       <Card>

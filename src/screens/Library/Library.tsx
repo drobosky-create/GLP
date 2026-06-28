@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useAppStore } from "../../state/store";
 import { COMPOUNDS } from "../../lib/peptides";
 import { Button, Card, TextInput } from "../../components/Form";
+import { articleForCompound } from "../Education/content";
 
 /**
  * Peptide Library (reference) — a browsable view of the catalog's FACTUAL fields
@@ -12,7 +13,14 @@ import { Button, Card, TextInput } from "../../components/Form";
 export function Library() {
   const setScreen = useAppStore((s) => s.setScreen);
   const compoundedEnabled = useAppStore((s) => s.compoundedEnabled);
+  const educationEnabled = useAppStore((s) => s.educationEnabled);
+  const setEducationArticle = useAppStore((s) => s.setEducationArticle);
   const [query, setQuery] = useState("");
+
+  const openArticle = (classLabel: string) => {
+    setEducationArticle(articleForCompound(classLabel));
+    setScreen("education");
+  };
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -87,6 +95,15 @@ export function Library() {
                     : "half-life unverified"}
                   {c.storage ? ` · ${c.storage}` : ""}
                 </span>
+                {educationEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => openArticle(c.classLabel)}
+                    className="self-start text-xs text-accent underline"
+                  >
+                    Learn more
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>

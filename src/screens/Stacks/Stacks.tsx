@@ -15,6 +15,7 @@ export function Stacks() {
   const saveStack = useAppStore((s) => s.saveStack);
   const deleteStack = useAppStore((s) => s.deleteStack);
   const compoundedEnabled = useAppStore((s) => s.compoundedEnabled);
+  const educationEnabled = useAppStore((s) => s.educationEnabled);
 
   const choices = useMemo(
     () =>
@@ -114,7 +115,7 @@ export function Stacks() {
         )}
       </Card>
 
-      {compoundedEnabled ? (
+      {educationEnabled ? (
         <Button variant="ghost" onClick={() => setScreen("education")}>
           Learn about stacks
         </Button>

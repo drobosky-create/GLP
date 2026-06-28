@@ -133,6 +133,12 @@ export interface AddVialInput {
 const COMPOUNDED_ENABLED =
   (import.meta.env.VITE_COMPOUNDED_MODE as string) === "true";
 
+// Education/Learn surface has its OWN flag so it can ship independently once its
+// content clears clinical + legal review (research-peptide articles additionally
+// require compounded mode). Off by default.
+const EDUCATION_ENABLED =
+  (import.meta.env.VITE_EDUCATION_ENABLED as string) === "true";
+
 interface AppState {
   // Onboarding mode (§2) — null until chosen.
   mode: AppMode | null;
@@ -157,6 +163,10 @@ interface AppState {
 
   // Compounded-mode feature flag (§2; gated on legal review, §9).
   compoundedEnabled: boolean;
+  // Education/Learn flag + the article a deep-link wants opened (null = list view).
+  educationEnabled: boolean;
+  educationArticleId: string | null;
+  setEducationArticle: (id: string | null) => void;
 
   // Entitlement (§6). `premium` / `trialDaysLeft` are derived snapshots kept in
   // sync via recomputeEntitlement so screens read them reactively without touching
@@ -210,6 +220,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   stacks: [],
   reminders: DEFAULT_REMINDERS,
   compoundedEnabled: COMPOUNDED_ENABLED,
+  educationEnabled: EDUCATION_ENABLED,
+  educationArticleId: null,
+  setEducationArticle: (id) => set({ educationArticleId: id }),
   entitlement: null,
   premium: false,
   trialDaysLeft: null,

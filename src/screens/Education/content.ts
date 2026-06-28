@@ -8,8 +8,9 @@
  *
  * SOURCING: claims are tied to real, named sources (links below). Figures are stated
  * as published ranges, not targets. This copy was assembled against public sources
- * but still needs professional clinical + legal sign-off before release (it stays
- * gated behind compounded mode until then).
+ * but still needs professional clinical + legal sign-off before release (the Learn
+ * surface stays behind its own flag until then; research-peptide articles also
+ * require compounded mode).
  */
 
 export const EDUCATION_REVIEW_STATUS =
@@ -22,16 +23,26 @@ export interface Source {
 
 export interface Article {
   id: string;
+  category: string;
   title: string;
   summary: string;
   body: string[]; // paragraphs
   evidence: string; // honest one-line posture on evidence strength
   sources: Source[];
+  compoundedOnly?: boolean; // research-peptide content; needs compounded mode
 }
+
+// Display order for the grouped Learn list.
+export const CATEGORY_ORDER = [
+  "Basics",
+  "GLP-1 & body composition",
+  "Research peptides",
+] as const;
 
 export const EDUCATION_ARTICLES: Article[] = [
   {
     id: "how-tally-thinks-about-stacks",
+    category: "Basics",
     title: "How Tally thinks about stacks",
     summary:
       "Why Tally describes, but never recommends, combinations of compounds.",
@@ -45,6 +56,7 @@ export const EDUCATION_ARTICLES: Article[] = [
   },
   {
     id: "what-stacking-means",
+    category: "Basics",
     title: "What “stacking” means",
     summary:
       "A plain-language description of the term and the limits of the evidence.",
@@ -64,9 +76,9 @@ export const EDUCATION_ARTICLES: Article[] = [
   },
   {
     id: "glp1-class-overview",
+    category: "GLP-1 & body composition",
     title: "GLP-1 receptor agonists (overview)",
-    summary:
-      "What the medication class is, and what the major trials reported.",
+    summary: "What the medication class is, and what the major trials reported.",
     body: [
       "GLP-1 receptor agonists are prescription medications studied in large randomized trials. In STEP 1, once-weekly semaglutide led to roughly 15% mean body-weight reduction over 68 weeks (Wilding et al., NEJM 2021).",
       "Tirzepatide, a GLP-1/GIP agonist, produced up to about 21% mean reduction at its highest dose over 72 weeks in SURMOUNT-1 (Jastreboff et al., NEJM 2022). Retatrutide, an investigational GLP-1/GIP/glucagon agonist, showed up to about 24% at 48 weeks in a phase 2 trial (Jastreboff et al., NEJM 2023).",
@@ -93,6 +105,7 @@ export const EDUCATION_ARTICLES: Article[] = [
   },
   {
     id: "muscle-loss-on-glp1",
+    category: "GLP-1 & body composition",
     title: "Muscle loss during weight loss",
     summary:
       "Why rapid weight loss — including on GLP-1 therapy — can include lean tissue.",
@@ -105,8 +118,7 @@ export const EDUCATION_ARTICLES: Article[] = [
       "Consistent across trials and reviews; the exact lean-mass proportion varies.",
     sources: [
       {
-        label:
-          "Jastreboff et al. NEJM 2022 (SURMOUNT-1 body-composition results)",
+        label: "Jastreboff et al. NEJM 2022 (SURMOUNT-1 body-composition results)",
         url: "https://www.nejm.org/doi/full/10.1056/NEJMoa2206038",
       },
       {
@@ -118,6 +130,7 @@ export const EDUCATION_ARTICLES: Article[] = [
   },
   {
     id: "protein-and-resistance-training",
+    category: "GLP-1 & body composition",
     title: "Protein and resistance training",
     summary:
       "The two levers most studied for protecting muscle during weight loss.",
@@ -142,7 +155,22 @@ export const EDUCATION_ARTICLES: Article[] = [
     ],
   },
   {
+    id: "reading-the-curve",
+    category: "GLP-1 & body composition",
+    title: "Reading your medication level",
+    summary: "What the curve shows — and what it doesn’t.",
+    body: [
+      "The medication-level view estimates how your logged doses accumulate over time. It is illustrative and relative — a picture of the rise-and-fall pattern from regular dosing, not a measurement of the drug in your blood.",
+      "It uses each compound’s published half-life and simple exponential decay, summed across your doses. Levels typically approach a steady plateau after roughly four to five half-lives of consistent dosing.",
+      "For compounds marked low-confidence, the half-life is an unverified placeholder and the curve is labeled “estimated.” The view is not for timing or changing doses — that’s a conversation for your provider.",
+    ],
+    evidence: "Standard single-compartment pharmacokinetic concept.",
+    sources: [{ label: "Tally pharmacokinetic model (Reference Sheet §1)" }],
+  },
+  {
     id: "research-peptides-caution",
+    category: "Research peptides",
+    compoundedOnly: true,
     title: "Research peptides: evidence and caution",
     summary:
       "Why many peptides in the catalog are labeled low-confidence / estimated.",
@@ -166,4 +194,27 @@ export const EDUCATION_ARTICLES: Article[] = [
       },
     ],
   },
+  {
+    id: "reconstitution-basics",
+    category: "Research peptides",
+    compoundedOnly: true,
+    title: "Reconstitution basics",
+    summary: "What the calculator does — and why to double-check it.",
+    body: [
+      "Reconstitution means mixing a powdered compound with bacteriostatic water to make a measured solution. Concentration is the vial strength divided by the water added; the dose volume is your target dose divided by that concentration; units are the volume read on the syringe.",
+      "Tally’s calculator runs this arithmetic and is covered by a test suite, but a wrong figure in a health context is serious — treat it as a calculator, not advice, and verify every figure with your provider.",
+      "It flags when a dose wouldn’t fit one syringe rather than rounding silently. Sourcing, purity, sterile technique, legality, and safety are all matters for a qualified provider.",
+    ],
+    evidence: "Arithmetic only; technique and safety are clinical matters.",
+    sources: [
+      { label: "Tally reconstitution math + test suite (Reference Sheet §2)" },
+    ],
+  },
 ];
+
+/** Maps a catalog compound to its most relevant article (for Library “Learn more”). */
+export function articleForCompound(classLabel: string): string {
+  return classLabel.startsWith("GLP-1")
+    ? "glp1-class-overview"
+    : "research-peptides-caution";
+}
