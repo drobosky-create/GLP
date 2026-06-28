@@ -69,6 +69,7 @@ export type Screen =
   | "sites"
   | "report"
   | "muscle"
+  | "curve"
   | "reminders"
   | "paywall";
 

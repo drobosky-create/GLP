@@ -45,6 +45,9 @@ export function Home() {
       <Button variant="ghost" onClick={() => setScreen("muscle")}>
         Muscle preservation
       </Button>
+      <Button variant="ghost" onClick={() => setScreen("curve")}>
+        Medication level
+      </Button>
 
       {premium ? (
         <p className="text-center text-xs text-success">
