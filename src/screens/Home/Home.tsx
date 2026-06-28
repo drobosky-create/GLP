@@ -49,14 +49,9 @@ export function Home() {
       <Button variant="ghost" onClick={() => setScreen("curve")}>
         Medication level
       </Button>
-      <div className="grid grid-cols-2 gap-3">
-        <Button variant="ghost" onClick={() => setScreen("library")}>
-          Peptide library
-        </Button>
-        <Button variant="ghost" onClick={() => setScreen("stacks")}>
-          My stacks
-        </Button>
-      </div>
+      <Button variant="ghost" onClick={() => setScreen("stacks")}>
+        My stacks
+      </Button>
       {compoundedEnabled ? (
         <Button variant="ghost" onClick={() => setScreen("education")}>
           Learn

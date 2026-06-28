@@ -11,6 +11,7 @@ const TABS: { id: Screen; label: string; glyph: string }[] = [
   { id: "weight", label: "Weight", glyph: "⚖" },
   { id: "effects", label: "Effects", glyph: "✦" },
   { id: "sites", label: "Sites", glyph: "◎" },
+  { id: "library", label: "Library", glyph: "📖" },
 ];
 
 export function TabBar({

@@ -61,11 +61,23 @@ export function Education() {
               <p className="text-xs text-muted">Evidence: {open.evidence}</p>
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted">Sources</span>
-                {open.sources.map((s) => (
-                  <span key={s} className="text-xs text-muted">
-                    • {s}
-                  </span>
-                ))}
+                {open.sources.map((s) =>
+                  s.url ? (
+                    <a
+                      key={s.label}
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-accent underline"
+                    >
+                      • {s.label}
+                    </a>
+                  ) : (
+                    <span key={s.label} className="text-xs text-muted">
+                      • {s.label}
+                    </span>
+                  ),
+                )}
               </div>
             </div>
           </Card>
