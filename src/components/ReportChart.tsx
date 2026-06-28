@@ -74,7 +74,7 @@ export function ReportChart({ model }: { model: ReportModel }) {
         <polyline
           points={toPoints(c.weightLine)}
           fill="none"
-          style={{ stroke: "var(--color-warning)" }}
+          style={{ stroke: "var(--color-accent-alt)" }}
           strokeWidth={1.6}
         />
       ) : null}

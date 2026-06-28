@@ -6,31 +6,39 @@
  * (bg-bg, text-muted, text-accent, rounded-md, font-display, …). There is NO
  * tailwind.config.js — tokens live here only, so nothing can drift out of sync.
  *
- * Direction (a deliberate choice, per §13): a calm, clinical-but-warm health tool.
- * Warm paper background + a grounded sage/teal accent, deliberately avoiding the
- * generic near-black + single-bright-blue look. Names are SEMANTIC (role, not value)
- * so a rebrand or partner co-brand (§9.5) is a few-line override of this block. */
+ * Brand: TALLY — "Track. Log. Report." A bold, dark, data-forward health tool:
+ * near-black canvas, acid-green primary, ice-blue alt accent, Inter type, the
+ * tally-mark logo. Names are SEMANTIC (role, not value) so this rebrand was a
+ * single-file token swap and a partner co-brand (§9.5) stays the same. */
 
 @import "tailwindcss";
 
+/* Inter, self-hosted (one @font-face, §13) — referenced only via the type tokens. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../assets/fonts/inter-variable.woff2") format("woff2");
+}
+
 @theme {
   /* COLOR — semantic roles, never value-names. Rebrand = edit here only. */
-  --color-bg:       #f6f4ef;   /* app background — warm paper            */
-  --color-surface:  #ffffff;   /* cards, sheets                          */
-  --color-border:   #e5e0d6;   /* hairlines, dividers                    */
-  --color-text:     #1d2b2a;   /* primary text — deep, slightly green    */
-  --color-muted:    #5d6b67;   /* secondary text                         */
-  --color-accent:   #2f7d6e;   /* primary action/brand — calm sage-teal  */
-  --color-on-accent:#ffffff;   /* text/icons on an accent-filled surface  */
-  --color-success:  #2f9e6e;
-  --color-warning:  #c98a16;
-  --color-danger:   #c4493f;
+  --color-bg:        #111318;  /* app background — near black            */
+  --color-surface:   #2a2d35;  /* cards, sheets — elevated               */
+  --color-border:    #313640;  /* hairlines, dividers                    */
+  --color-text:      #ffffff;  /* primary text — white                   */
+  --color-muted:     #9aa1ac;  /* secondary text                         */
+  --color-accent:    #b8ff00;  /* primary action/brand — acid green      */
+  --color-accent-alt:#00c2ff;  /* secondary accent — ice blue            */
+  --color-on-accent: #111318;  /* text/icons on an accent-filled surface */
+  --color-success:   #b8ff00;  /* positive — brand green                 */
+  --color-warning:   #ffb020;
+  --color-danger:    #ff5c61;
 
-  /* TYPE — two roles is enough. System stack for now (placeholder per Phase 0);
-   * real typefaces get loaded once via @font-face here in a later phase and are
-   * referenced only through these tokens. */
-  --font-display: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-body:    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* TYPE — two roles is enough. Inter for both (display heavier via weight). */
+  --font-display: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-body:    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
   /* SHAPE */
   --radius-sm: 8px;

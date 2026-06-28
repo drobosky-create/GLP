@@ -5,7 +5,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // in `dist` is what boots in the first sitting.
 const config: CapacitorConfig = {
   appId: "com.glp1companion.app",
-  appName: "GLP-1 Companion",
+  appName: "Tally",
   webDir: "dist",
 };
 

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 72" width="340" height="72">
+  <!-- Dark wordmark: near-black bg -->
+  <rect width="340" height="72" fill="#111318"/>
+
+  <!-- Tally mark icon (scaled to 44px height, centered vertically) -->
+  <!-- Original viewBox 120x120, scale to fit 44px height: scale = 44/120 = 0.3667 -->
+  <!-- Translate to x:10, y:14 (centered in 72px height: (72-44)/2 = 14) -->
+  <g transform="translate(10,14) scale(0.3667)">
+    <line x1="30" y1="28" x2="30" y2="88" stroke="#B8FF00" stroke-width="8.5" stroke-linecap="square"/>
+    <line x1="46" y1="28" x2="46" y2="88" stroke="#B8FF00" stroke-width="8.5" stroke-linecap="square"/>
+    <line x1="62" y1="28" x2="62" y2="88" stroke="#B8FF00" stroke-width="8.5" stroke-linecap="square"/>
+    <line x1="78" y1="28" x2="78" y2="88" stroke="#B8FF00" stroke-width="8.5" stroke-linecap="square"/>
+    <line x1="18" y1="94" x2="90" y2="22" stroke="#B8FF00" stroke-width="8.5" stroke-linecap="square"/>
+  </g>
+
+  <!-- Thin vertical divider -->
+  <line x1="56" y1="18" x2="56" y2="54" stroke="#2A2D35" stroke-width="1"/>
+
+  <!-- TALLY wordmark: condensed, uppercase, medium-bold -->
+  <text x="68" y="48"
+        font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+        font-size="32"
+        font-weight="600"
+        letter-spacing="6"
+        fill="#FFFFFF">TALLY</text>
+</svg>

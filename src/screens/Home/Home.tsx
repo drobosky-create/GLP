@@ -22,12 +22,12 @@ export function Home() {
   return (
     <div className="flex flex-col gap-4">
       <header className="flex items-center gap-3">
-        <Logo size={40} className="text-accent" />
+        <Logo size={40} />
         <div className="flex flex-col">
-          <h1 className="font-display text-xl font-semibold text-text">
-            GLP-1 Companion
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-text">
+            Tally
           </h1>
-          <p className="text-xs text-muted">Your journey, in your own data.</p>
+          <p className="text-xs text-muted">Track. Log. Report.</p>
         </div>
       </header>
 

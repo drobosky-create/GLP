@@ -344,14 +344,14 @@ export async function generateReportPdf(m: ReportModel): Promise<Blob> {
   const cMuted = token("--color-muted");
   const cBorder = token("--color-border");
   const cDose = token("--color-accent");
-  const cWeight = token("--color-warning");
+  const cWeight = token("--color-accent-alt");
   const cEffect = token("--color-danger");
 
   let y = 54;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.setTextColor(cText);
-  doc.text("GLP-1 Companion — Progress Report", marginX, y);
+  doc.text("Tally — Progress Report", marginX, y);
 
   y += 16;
   doc.setFont("helvetica", "normal");
