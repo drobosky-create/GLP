@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- App icon: near-black background, rounded square -->
+  <rect width="120" height="120" rx="26" fill="#111318"/>
+
+  <!--
+    Tally mark: 4 vertical strokes + 1 diagonal cross
+    Canvas: 120x120. Mark occupies ~72x72 centered area: x:24–96, y:24–96
+    4 verticals: x = 30, 46, 62, 78  |  y: 28 to 88  (height 60)
+    Stroke width: 8.5  |  Square linecap
+    Diagonal: from (20, 96) to (88, 24) — a true 45° cut through all 4 strokes
+  -->
+
+  <!-- Vertical stroke 1 -->
+  <line x1="30" y1="28" x2="30" y2="88" stroke="#B8FF00" stroke-width="8.5" stroke-linecap="square"/>
+  <!-- Vertical stroke 2 -->
+  <line x1="46" y1="28" x2="46" y2="88" stroke="#B8FF00" stroke-width="8.5" stroke-linecap="square"/>
+  <!-- Vertical stroke 3 -->
+  <line x1="62" y1="28" x2="62" y2="88" stroke="#B8FF00" stroke-width="8.5" stroke-linecap="square"/>
+  <!-- Vertical stroke 4 -->
+  <line x1="78" y1="28" x2="78" y2="88" stroke="#B8FF00" stroke-width="8.5" stroke-linecap="square"/>
+
+  <!-- Diagonal cross stroke — rises left-to-right at ~40° -->
+  <line x1="18" y1="94" x2="90" y2="22" stroke="#B8FF00" stroke-width="8.5" stroke-linecap="square"/>
+</svg>

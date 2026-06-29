@@ -1,0 +1,63 @@
+/* src/styles/theme.css — THE single source of truth for all UI values (PRD §13).
+ *
+ * No component, screen, or lib module may use a raw hex, raw font-family, or magic
+ * brand spacing/radius anywhere else. If a value is needed, it becomes a token here
+ * first. Tailwind v4 reads this @theme block and generates the utility classes
+ * (bg-bg, text-muted, text-accent, rounded-md, font-display, …). There is NO
+ * tailwind.config.js — tokens live here only, so nothing can drift out of sync.
+ *
+ * Brand: TALLY — "Track. Log. Report." A bold, dark, data-forward health tool:
+ * near-black canvas, acid-green primary, ice-blue alt accent, Inter type, the
+ * tally-mark logo. Names are SEMANTIC (role, not value) so this rebrand was a
+ * single-file token swap and a partner co-brand (§9.5) stays the same. */
+
+@import "tailwindcss";
+
+/* Inter, self-hosted (one @font-face, §13) — referenced only via the type tokens. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../assets/fonts/inter-variable.woff2") format("woff2");
+}
+
+@theme {
+  /* COLOR — semantic roles, never value-names. Rebrand = edit here only. */
+  --color-bg:        #111318;  /* app background — near black            */
+  --color-surface:   #2a2d35;  /* cards, sheets — elevated               */
+  --color-border:    #313640;  /* hairlines, dividers                    */
+  --color-text:      #ffffff;  /* primary text — white                   */
+  --color-muted:     #9aa1ac;  /* secondary text                         */
+  --color-accent:    #b8ff00;  /* primary action/brand — acid green      */
+  --color-accent-alt:#00c2ff;  /* secondary accent — ice blue            */
+  --color-on-accent: #111318;  /* text/icons on an accent-filled surface */
+  --color-success:   #b8ff00;  /* positive — brand green                 */
+  --color-warning:   #ffb020;
+  --color-danger:    #ff5c61;
+
+  /* TYPE — two roles is enough. Inter for both (display heavier via weight). */
+  --font-display: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-body:    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* SHAPE */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+}
+
+/* Global base — applies the tokens to the document shell. Component-level styling
+ * uses the generated utilities (bg-bg, text-text, …), never raw values. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
