@@ -22,6 +22,11 @@ import {
   readWeightSamples,
   requestHealthPermissions,
 } from "../lib/health";
+import {
+  addPhoto as addPhotoRecord,
+  allPhotos,
+  removePhoto,
+} from "../lib/photos";
 
 const DAY_MS = 86_400_000;
 
@@ -47,7 +52,8 @@ export type Screen =
   | "vials"
   | "library"
   | "stacks"
-  | "education";
+  | "education"
+  | "photos";
 
 /** A user-defined stack — app-layer, not part of the clinical core (kept in prefs). */
 export interface Stack {
@@ -55,6 +61,14 @@ export interface Stack {
   name: string;
   compoundIds: string[];
   createdAt: number;
+}
+
+/** A progress photo surfaced to the UI: metadata + a session object URL. */
+export interface PhotoItem {
+  id: string;
+  at: number;
+  note?: string;
+  url: string;
 }
 
 const DEFAULT_REMINDERS: Reminder[] = [
@@ -143,6 +157,7 @@ interface AppState {
 
   reminders: Reminder[];
   stacks: Stack[];
+  photos: PhotoItem[];
 
   compoundedEnabled: boolean;
   educationEnabled: boolean;
@@ -166,6 +181,10 @@ interface AppState {
   deleteVial: (id: string) => Promise<void>;
 
   syncHealth: () => Promise<{ added: number; reason: string }>;
+
+  refreshPhotos: () => Promise<void>;
+  addProgressPhoto: (blob: Blob, at: number, note?: string) => Promise<void>;
+  deleteProgressPhoto: (id: string) => Promise<void>;
 
   startTrial: () => Promise<void>;
   applyConfirmedPurchase: (
@@ -203,6 +222,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   reminders: DEFAULT_REMINDERS,
   stacks: [],
+  photos: [],
 
   compoundedEnabled: COMPOUNDED_ENABLED,
   educationEnabled: EDUCATION_ENABLED,
@@ -233,6 +253,39 @@ export const useAppStore = create<AppState>((set, get) => ({
       hydrated: true,
     });
     for (const r of prefs.reminders) if (r.enabled) void scheduleReminder(r);
+    await get().refreshPhotos();
+  },
+
+  refreshPhotos: async () => {
+    const records = (await allPhotos()).sort((a, b) => b.at - a.at);
+    // Reuse the object URL of any photo that still exists, and revoke only the
+    // URLs of photos that are gone. Revoking a URL that a still-mounted <img>
+    // points at causes a net::ERR_FILE_NOT_FOUND, so never revoke survivors.
+    const prev = get().photos;
+    const prevById = new Map(prev.map((p) => [p.id, p]));
+    const liveIds = new Set(records.map((r) => r.id));
+    for (const p of prev) if (!liveIds.has(p.id)) URL.revokeObjectURL(p.url);
+    set({
+      photos: records.map(
+        (r) =>
+          prevById.get(r.id) ?? {
+            id: r.id,
+            at: r.at,
+            note: r.note,
+            url: URL.createObjectURL(r.blob),
+          },
+      ),
+    });
+  },
+
+  addProgressPhoto: async (blob, at, note) => {
+    await addPhotoRecord({ at, blob, note });
+    await get().refreshPhotos();
+  },
+
+  deleteProgressPhoto: async (id) => {
+    await removePhoto(id);
+    await get().refreshPhotos();
   },
 
   logDose: async (d) => {

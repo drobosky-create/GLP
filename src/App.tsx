@@ -17,6 +17,7 @@ import { Library } from "./screens/Library/Library";
 import { Stacks } from "./screens/Stacks/Stacks";
 import { Education } from "./screens/Education/Education";
 import { Onboarding } from "./screens/Onboarding/Onboarding";
+import { Photos } from "./screens/Photos/Photos";
 
 /** Root shell: hydrate local data once, then render the active screen + tab bar. */
 export function App() {
@@ -76,6 +77,8 @@ export function App() {
           <Stacks />
         ) : screen === "education" ? (
           <Education />
+        ) : screen === "photos" ? (
+          <Photos />
         ) : (
           <Paywall />
         )}
