@@ -17,6 +17,8 @@ export function Home() {
   const entitlement = useAppStore((s) => s.entitlement);
   const compoundedEnabled = useAppStore((s) => s.compoundedEnabled);
   const educationEnabled = useAppStore((s) => s.educationEnabled);
+  const mode = useAppStore((s) => s.mode);
+  const clearMode = useAppStore((s) => s.clearMode);
 
   const premium = isEntitled(entitlement);
   const trialDaysLeft =
@@ -120,6 +122,13 @@ export function Home() {
           </li>
         </ul>
       </Card>
+
+      <p className="text-center text-xs text-muted">
+        {mode === "compounded" ? "Compounded mode" : "Prescribed mode"} ·{" "}
+        <button type="button" onClick={clearMode} className="underline">
+          Change
+        </button>
+      </p>
     </div>
   );
 }

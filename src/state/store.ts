@@ -118,6 +118,7 @@ const byNewest = (a: { at: number }, b: { at: number }): number => b.at - a.at;
 interface AppState {
   mode: AppMode | null;
   setMode: (mode: AppMode) => void;
+  clearMode: () => void;
 
   screen: Screen;
   setScreen: (screen: Screen) => void;
@@ -173,6 +174,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMode: (mode) => {
     set({ mode });
     savePrefs({ mode, reminders: get().reminders, stacks: get().stacks });
+  },
+  clearMode: () => {
+    set({ mode: null });
+    savePrefs({ mode: null, reminders: get().reminders, stacks: get().stacks });
   },
 
   screen: "home",
