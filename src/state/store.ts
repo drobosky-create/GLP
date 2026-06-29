@@ -151,6 +151,12 @@ interface AppState {
   logStrength: (s: Omit<StrengthCheckin, "id">) => Promise<void>;
   addVial: (v: Omit<Vial, "id">) => Promise<void>;
 
+  deleteDose: (id: string) => Promise<void>;
+  deleteWeight: (id: string) => Promise<void>;
+  deleteSideEffect: (id: string) => Promise<void>;
+  deleteStrength: (id: string) => Promise<void>;
+  deleteVial: (id: string) => Promise<void>;
+
   startTrial: () => Promise<void>;
   applyConfirmedPurchase: (
     channel: PurchaseChannel,
@@ -237,6 +243,27 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   addVial: async (v) => {
     await repo.addVial(v);
+    get().refresh();
+  },
+
+  deleteDose: async (id) => {
+    await repo.removeDose(id);
+    get().refresh();
+  },
+  deleteWeight: async (id) => {
+    await repo.removeWeight(id);
+    get().refresh();
+  },
+  deleteSideEffect: async (id) => {
+    await repo.removeSideEffect(id);
+    get().refresh();
+  },
+  deleteStrength: async (id) => {
+    await repo.removeStrength(id);
+    get().refresh();
+  },
+  deleteVial: async (id) => {
+    await repo.removeVial(id);
     get().refresh();
   },
 

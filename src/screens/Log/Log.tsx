@@ -23,6 +23,7 @@ export function Log() {
   const mode = useAppStore((s) => s.mode);
   const doseEvents = useAppStore((s) => s.doses);
   const logDose = useAppStore((s) => s.logDose);
+  const deleteDose = useAppStore((s) => s.deleteDose);
 
   const compounds = useMemo(
     () => compoundsForMode(mode ?? "prescribed"),
@@ -134,6 +135,9 @@ export function Log() {
                     {formatWhen(d.at)} · {siteLabel(d.injectionSite)}
                   </span>
                 </div>
+                <Button variant="ghost" onClick={() => deleteDose(d.id)}>
+                  Delete
+                </Button>
               </li>
             ))}
           </ul>

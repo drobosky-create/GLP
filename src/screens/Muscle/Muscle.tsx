@@ -31,6 +31,7 @@ export function Muscle() {
   const strength = useAppStore((s) => s.strength);
   const logIntake = useAppStore((s) => s.logIntake);
   const logStrength = useAppStore((s) => s.logStrength);
+  const deleteStrength = useAppStore((s) => s.deleteStrength);
 
   const [basis, setBasis] = useState<ProteinBasis>("bodyWeight");
   const [protein, setProtein] = useState("");
@@ -248,12 +249,21 @@ export function Muscle() {
               {strength.slice(0, 5).map((c) => (
                 <li
                   key={c.id}
-                  className="flex justify-between rounded-md border border-border p-2 text-sm"
+                  className="flex items-center justify-between gap-2 rounded-md border border-border p-2 text-sm"
                 >
                   <span className="text-text">
                     {c.metric}: {c.value}
                   </span>
-                  <span className="text-muted">{formatWhen(c.at)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted">{formatWhen(c.at)}</span>
+                    <button
+                      type="button"
+                      onClick={() => deleteStrength(c.id)}
+                      className="text-xs text-muted underline"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

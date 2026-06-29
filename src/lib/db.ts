@@ -11,7 +11,7 @@
 
 import {
   AppData, DoseEvent, WeightEntry, SideEffectEntry,
-  IntakeEntry, StrengthCheckin, Vial, Medication, Entitlement,
+  IntakeEntry, StrengthCheckin, Vial, Medication, Entitlement, ID,
 } from "../types";
 
 export interface Storage {
@@ -78,6 +78,30 @@ export class Repo {
   }
   async setEntitlement(e: Entitlement): Promise<void> {
     this.data.entitlement = e; await this.persist();
+  }
+
+  // Remove a user-logged record by id (approved core addition, issue #1). Additive
+  // and symmetric to the add* methods; deletes only the user's own logged data.
+  async removeDose(id: ID): Promise<void> {
+    this.data.doses = this.data.doses.filter((x) => x.id !== id); await this.persist();
+  }
+  async removeWeight(id: ID): Promise<void> {
+    this.data.weights = this.data.weights.filter((x) => x.id !== id); await this.persist();
+  }
+  async removeSideEffect(id: ID): Promise<void> {
+    this.data.sideEffects = this.data.sideEffects.filter((x) => x.id !== id); await this.persist();
+  }
+  async removeIntake(id: ID): Promise<void> {
+    this.data.intake = this.data.intake.filter((x) => x.id !== id); await this.persist();
+  }
+  async removeStrength(id: ID): Promise<void> {
+    this.data.strength = this.data.strength.filter((x) => x.id !== id); await this.persist();
+  }
+  async removeMedication(id: ID): Promise<void> {
+    this.data.medications = this.data.medications.filter((x) => x.id !== id); await this.persist();
+  }
+  async removeVial(id: ID): Promise<void> {
+    this.data.vials = this.data.vials.filter((x) => x.id !== id); await this.persist();
   }
 
   doses() { return [...this.data.doses].sort((a, b) => a.at - b.at); }

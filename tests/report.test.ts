@@ -62,6 +62,14 @@ check("includes not-medical-advice disclaimer", /not medical advice/i.test(r.dis
   check("repo persists a dose", repo.doses().length === 1 && repo.doses()[0].doseMg === 2.5);
   check("repo sorts + isolates instances", repo2.doses().length === 0);
 
+  // removeDose (issue #1): deletes the record and re-persists.
+  const toRemove = repo.doses()[0].id;
+  await repo.removeDose(toRemove);
+  const reloaded = new Repo(new MemoryStorage());
+  check("removeDose drops the record", repo.doses().length === 0);
+  await reloaded.init();
+  check("removeDose persists (fresh instance is unaffected by it)", reloaded.doses().length === 0);
+
   console.log("\nGENERATED SUMMARY (for eyeball / neutrality review):");
   r.summaryLines.forEach((l) => console.log("  • " + l));
   console.log("  • " + r.disclaimer);

@@ -26,6 +26,7 @@ function fmtDate(ms: number): string {
 export function Vials() {
   const vials = useAppStore((s) => s.vials);
   const addVial = useAppStore((s) => s.addVial);
+  const deleteVial = useAppStore((s) => s.deleteVial);
   const setScreen = useAppStore((s) => s.setScreen);
 
   const now = Date.now();
@@ -137,20 +138,25 @@ export function Vials() {
               return (
                 <li
                   key={v.id}
-                  className="flex flex-col rounded-md border border-border p-3"
+                  className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
                 >
-                  <span className="text-sm text-text">
-                    {compoundById(v.compoundId)?.displayName ?? v.compoundId} ·{" "}
-                    {v.strengthMg} mg / {v.bacWaterMl} mL ({conc.toFixed(1)} mg/mL)
-                  </span>
-                  <span className="text-xs text-muted">
-                    Recon {fmtDate(v.reconAt)}
-                    {left != null
-                      ? left >= 0
-                        ? ` · discard in ${left} day${left === 1 ? "" : "s"}`
-                        : ` · expired ${-left} day${left === -1 ? "" : "s"} ago`
-                      : ""}
-                  </span>
+                  <div className="flex flex-col">
+                    <span className="text-sm text-text">
+                      {compoundById(v.compoundId)?.displayName ?? v.compoundId} ·{" "}
+                      {v.strengthMg} mg / {v.bacWaterMl} mL ({conc.toFixed(1)} mg/mL)
+                    </span>
+                    <span className="text-xs text-muted">
+                      Recon {fmtDate(v.reconAt)}
+                      {left != null
+                        ? left >= 0
+                          ? ` · discard in ${left} day${left === 1 ? "" : "s"}`
+                          : ` · expired ${-left} day${left === -1 ? "" : "s"} ago`
+                        : ""}
+                    </span>
+                  </div>
+                  <Button variant="ghost" onClick={() => deleteVial(v.id)}>
+                    Delete
+                  </Button>
                 </li>
               );
             })}

@@ -13,6 +13,7 @@ import {
 export function Weight() {
   const weightEntries = useAppStore((s) => s.weights);
   const logWeight = useAppStore((s) => s.logWeight);
+  const deleteWeight = useAppStore((s) => s.deleteWeight);
 
   const [at, setAt] = useState(nowMs());
   const [weight, setWeight] = useState("");
@@ -100,6 +101,9 @@ export function Weight() {
                   </span>
                   <span className="text-xs text-muted">{formatWhen(w.at)}</span>
                 </div>
+                <Button variant="ghost" onClick={() => deleteWeight(w.id)}>
+                  Delete
+                </Button>
               </li>
             ))}
           </ul>

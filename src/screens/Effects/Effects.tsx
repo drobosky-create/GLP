@@ -31,6 +31,7 @@ function typeLabel(t: SideEffectType): string {
 export function Effects() {
   const sideEffects = useAppStore((s) => s.sideEffects);
   const logSideEffect = useAppStore((s) => s.logSideEffect);
+  const deleteSideEffect = useAppStore((s) => s.deleteSideEffect);
 
   const [type, setType] = useState<SideEffectType>("nausea");
   const [severity, setSeverity] = useState(1);
@@ -93,6 +94,9 @@ export function Effects() {
                   </span>
                   <span className="text-xs text-muted">{formatWhen(e.at)}</span>
                 </div>
+                <Button variant="ghost" onClick={() => deleteSideEffect(e.id)}>
+                  Delete
+                </Button>
               </li>
             ))}
           </ul>
