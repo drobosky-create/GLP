@@ -7,8 +7,9 @@ dist-ssr/
 *.local
 *.tsbuildinfo
 
-# Capacitor native platforms (generated later, Phase 2)
-/ios/
+# Capacitor native platforms.
+# ios/ is committed (its own ios/.gitignore excludes Pods/, build/, public/, and
+# generated config). android/ is not scaffolded yet.
 /android/
 
 # Editor / OS
