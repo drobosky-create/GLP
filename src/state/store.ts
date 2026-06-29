@@ -17,6 +17,13 @@ import {
 } from "../lib/billing";
 import type { PurchaseChannel } from "../types";
 import { scheduleReminder, type Reminder } from "../lib/notify";
+import {
+  newWeightSamples,
+  readWeightSamples,
+  requestHealthPermissions,
+} from "../lib/health";
+
+const DAY_MS = 86_400_000;
 
 /** The one Repo instance, backed by IndexedDB (Core Integration Guide). */
 const repo = new Repo(new IndexedStorage());
@@ -158,6 +165,8 @@ interface AppState {
   deleteStrength: (id: string) => Promise<void>;
   deleteVial: (id: string) => Promise<void>;
 
+  syncHealth: () => Promise<{ added: number; reason: string }>;
+
   startTrial: () => Promise<void>;
   applyConfirmedPurchase: (
     channel: PurchaseChannel,
@@ -270,6 +279,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteVial: async (id) => {
     await repo.removeVial(id);
     get().refresh();
+  },
+
+  syncHealth: async () => {
+    const perm = await requestHealthPermissions();
+    if (!perm.ok) return { added: 0, reason: perm.reason };
+    const samples = await readWeightSamples(Date.now() - 90 * DAY_MS);
+    const existing = get().weights.map((w) => ({ at: w.at, weightKg: w.weightKg }));
+    const fresh = newWeightSamples(samples, existing);
+    for (const s of fresh) await repo.addWeight({ at: s.at, weightKg: s.weightKg });
+    get().refresh();
+    return {
+      added: fresh.length,
+      reason: fresh.length
+        ? `Imported ${fresh.length} weight reading${fresh.length === 1 ? "" : "s"}.`
+        : "No new readings to import.",
+    };
   },
 
   startTrial: async () => {
