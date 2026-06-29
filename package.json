@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "test": "tsx tests/recon.test.ts && tsx tests/report.test.ts && tsx tests/billing.test.ts && tsx tests/health.test.ts"
+    "test": "tsx tests/recon.test.ts && tsx tests/report.test.ts && tsx tests/billing.test.ts && tsx tests/health.test.ts && tsx tests/photos.test.ts"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",

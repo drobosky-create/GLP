@@ -57,6 +57,9 @@ export function Home() {
       <Button variant="ghost" onClick={() => setScreen("curve")}>
         Medication level
       </Button>
+      <Button variant="ghost" onClick={() => setScreen("photos")}>
+        Photo progress
+      </Button>
       <Button variant="ghost" onClick={() => setScreen("stacks")}>
         My stacks
       </Button>
