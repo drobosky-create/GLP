@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAppStore, nowMs } from "../../state/store";
+import { healthAvailable } from "../../lib/health";
 import {
   Button,
   Card,
@@ -14,6 +15,18 @@ export function Weight() {
   const weightEntries = useAppStore((s) => s.weights);
   const logWeight = useAppStore((s) => s.logWeight);
   const deleteWeight = useAppStore((s) => s.deleteWeight);
+  const syncHealth = useAppStore((s) => s.syncHealth);
+  const [healthNote, setHealthNote] = useState("");
+  const [syncing, setSyncing] = useState(false);
+
+  const onSyncHealth = async () => {
+    setSyncing(true);
+    try {
+      setHealthNote((await syncHealth()).reason);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const [at, setAt] = useState(nowMs());
   const [weight, setWeight] = useState("");
@@ -81,6 +94,25 @@ export function Weight() {
             Log weight
           </Button>
         </div>
+      </Card>
+
+      <Card title="Apple Health / Health Connect">
+        <p className="mb-3 text-xs text-muted">
+          Import weight readings from your device's health app. Only your own
+          measured data is imported — nothing is shared out.
+        </p>
+        {healthAvailable() ? (
+          <Button onClick={onSyncHealth} disabled={syncing}>
+            {syncing ? "Syncing…" : "Sync weight from Health"}
+          </Button>
+        ) : (
+          <p className="text-sm text-muted">
+            Available in the native app (iOS Health / Android Health Connect).
+          </p>
+        )}
+        {healthNote ? (
+          <p className="mt-2 text-xs text-text">{healthNote}</p>
+        ) : null}
       </Card>
 
       <Card title="Recent entries">
