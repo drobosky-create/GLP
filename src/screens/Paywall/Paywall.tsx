@@ -1,52 +1,67 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useAppStore } from "../../state/store";
-import type { Plan } from "../../state/store";
+import {
+  accessLevel,
+  buildPaywall,
+  daysLeftInTrial,
+  isEntitled,
+  recordLinkAttribution,
+  type PriceConfig,
+} from "../../lib/billing";
 import { Button, Card } from "../../components/Form";
 
-// What premium unlocks (the §6 paywall set). Items not yet built are labeled.
+const PRICES: PriceConfig = {
+  webMonthlyDisplay: "$9.99/mo",
+  webAnnualDisplay: "$59.99/yr",
+  iapMonthlyDisplay: "$9.99/mo",
+  iapAnnualDisplay: "$59.99/yr",
+};
+
 const PREMIUM_FEATURES = [
   "Correlation report & one-page PDF export",
-  "Muscle-preservation module (coming soon)",
-  "Medication-level curve (coming soon)",
+  "Muscle-preservation module",
+  "Medication-level curve",
   "Photo progress (coming soon)",
 ];
 
 /** Paywall (Phase 4) — mandatory 7-day trial + dual purchase channels (§6). */
 export function Paywall() {
-  const plans = useAppStore((s) => s.plans);
-  const premium = useAppStore((s) => s.premium);
-  const trialDaysLeft = useAppStore((s) => s.trialDaysLeft);
   const entitlement = useAppStore((s) => s.entitlement);
   const startTrial = useAppStore((s) => s.startTrial);
-  const openCheckout = useAppStore((s) => s.openCheckout);
-  const purchaseViaStore = useAppStore((s) => s.purchaseViaStore);
-  const restorePurchases = useAppStore((s) => s.restorePurchases);
-  const recompute = useAppStore((s) => s.recomputeEntitlement);
   const setScreen = useAppStore((s) => s.setScreen);
+  const [note, setNote] = useState("");
 
-  const [planId, setPlanId] = useState<Plan["id"]>("annual");
-  const [note, setNote] = useState<string>("");
-
-  useEffect(() => {
-    recompute();
-  }, [recompute]);
+  const platform = Capacitor.getPlatform() as "ios" | "android" | "web";
+  const options = buildPaywall(platform, PRICES);
+  const level = accessLevel(entitlement);
+  const premium = isEntitled(entitlement);
+  const trialDays = daysLeftInTrial(entitlement);
 
   const onStartTrial = async () => {
     await startTrial();
     setNote("Your 7-day free trial is active.");
   };
-  const onWeb = async () => setNote((await openCheckout(planId)).reason);
-  const onStore = async () => setNote((await purchaseViaStore(planId)).reason);
-  const onRestore = async () => setNote((await restorePurchases()).reason);
 
-  const onTrial = entitlement?.tier === "trial";
+  const onSubscribe = (channel: string) => {
+    if (channel === "stripe_link") {
+      recordLinkAttribution();
+      const url = import.meta.env.VITE_STRIPE_CHECKOUT_URL as string | undefined;
+      if (url) {
+        window.open(url, "_blank", "noopener");
+        setNote("Opened secure checkout in your browser.");
+      } else {
+        setNote("Checkout link not configured yet.");
+      }
+    } else {
+      setNote("In-app purchase is available in the native app.");
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <header className="flex flex-col gap-1">
-        <h1 className="font-display text-xl font-semibold text-text">
-          Go Premium
-        </h1>
+        <h1 className="font-display text-xl font-semibold text-text">Go Premium</h1>
         <p className="text-xs text-muted">
           Unlock the analytics. Your logging and reminders are always free.
         </p>
@@ -55,10 +70,8 @@ export function Paywall() {
       {premium ? (
         <Card>
           <p className="text-sm text-success">
-            {onTrial && trialDaysLeft != null
-              ? `Trial active — ${trialDaysLeft} day${
-                  trialDaysLeft === 1 ? "" : "s"
-                } left.`
+            {level === "trial" && trialDays > 0
+              ? `Trial active — ${trialDays} day${trialDays === 1 ? "" : "s"} left.`
               : "Premium is active. Thank you!"}
           </p>
         </Card>
@@ -75,52 +88,31 @@ export function Paywall() {
         </ul>
       </Card>
 
-      <Card title="Choose a plan">
+      <Card title="Choose how to subscribe">
         <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-2">
-            {plans.map((p) => {
-              const active = p.id === planId;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPlanId(p.id)}
-                  className={`flex flex-col items-start rounded-md border p-3 text-left ${
-                    active
-                      ? "border-accent bg-accent text-on-accent"
-                      : "border-border bg-surface text-text"
-                  }`}
-                >
-                  <span className="font-display text-sm">{p.label}</span>
-                  <span
-                    className={`text-sm ${active ? "text-on-accent" : "text-text"}`}
-                  >
-                    {p.priceLabel}
-                  </span>
-                  <span
-                    className={`text-xs ${active ? "text-on-accent" : "text-muted"}`}
-                  >
-                    {p.cadence}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
           {!premium ? (
             <Button onClick={onStartTrial}>Start 7-day free trial</Button>
           ) : null}
 
-          {/* Dual paywall — both channels shown (§6). */}
-          <Button variant="ghost" onClick={onWeb}>
-            Continue on web (Stripe)
-          </Button>
-          <Button variant="ghost" onClick={onStore}>
-            Buy in app
-          </Button>
-          <Button variant="ghost" onClick={onRestore}>
-            Restore purchase
-          </Button>
+          {options.map((opt) => (
+            <div
+              key={opt.channel}
+              className="flex flex-col gap-1 rounded-md border border-border p-3"
+            >
+              <span className="font-display text-sm text-text">{opt.label}</span>
+              <span className="text-sm text-text">
+                {opt.monthlyDisplay} · {opt.annualDisplay}
+              </span>
+              <span className="text-xs text-muted">{opt.note}</span>
+              <Button
+                variant="ghost"
+                className="mt-2"
+                onClick={() => onSubscribe(opt.channel)}
+              >
+                {opt.channel === "stripe_link" ? "Continue on web" : "Buy in app"}
+              </Button>
+            </div>
+          ))}
 
           <p className="text-xs text-muted">
             No charge until you confirm in checkout. Cancel anytime — no surprise

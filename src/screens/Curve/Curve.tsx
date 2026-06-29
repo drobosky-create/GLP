@@ -1,48 +1,64 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useAppStore } from "../../state/store";
-import { buildCurve } from "../../lib/pk";
-import { getCompound } from "../../lib/peptides";
+import { curveForCompound, hoursToSteadyState } from "../../lib/pk";
+import { compoundById } from "../../lib/peptides";
+import { canAccess } from "../../lib/billing";
 import { CurveChart } from "../../components/CurveChart";
 import { Button, Card, Field, Select } from "../../components/Form";
 
-/** Medication-level curve (Phase 6) — premium (§6). Math/constants from Ref §1. */
+const HOUR = 3_600_000;
+
+/** Medication-level curve (Phase 6) — Pro via canAccess("med_curve"). Ref §1. */
 export function Curve() {
-  const premium = useAppStore((s) => s.premium);
-  const recompute = useAppStore((s) => s.recomputeEntitlement);
+  const entitlement = useAppStore((s) => s.entitlement);
   const setScreen = useAppStore((s) => s.setScreen);
-  const medications = useAppStore((s) => s.medications);
-  const doseEvents = useAppStore((s) => s.doseEvents);
+  const doses = useAppStore((s) => s.doses);
 
-  useEffect(() => {
-    recompute();
-  }, [recompute]);
-
-  // Compounds the user has actually logged doses for.
+  // Compounds the user has actually logged, with their dose events.
   const logged = useMemo(() => {
-    return medications
-      .map((m) => {
-        const compound = getCompound(m.compoundId);
-        const doses = doseEvents
-          .filter((d) => d.medicationId === m.id)
-          .map((d) => ({ t: Date.parse(d.datetime), dose: d.dose }));
-        return compound && doses.length > 0 ? { compound, doses } : null;
+    const ids = Array.from(new Set(doses.map((d) => d.compoundId)));
+    return ids
+      .map((id) => {
+        const compound = compoundById(id);
+        const events = doses.filter((d) => d.compoundId === id);
+        return compound && events.length > 0 ? { id, compound } : null;
       })
-      .filter((x): x is NonNullable<typeof x> => x !== null);
-  }, [medications, doseEvents]);
+      .filter((x): x is { id: string; compound: NonNullable<ReturnType<typeof compoundById>> } => x !== null);
+  }, [doses]);
 
   const [compoundId, setCompoundId] = useState<string>("");
-  const selected =
-    logged.find((l) => l.compound.id === compoundId) ?? logged[0];
+  const activeId = logged.find((l) => l.id === compoundId)?.id ?? logged[0]?.id;
 
-  const model = useMemo(
-    () =>
-      selected
-        ? buildCurve(selected.doses, selected.compound, Date.now())
-        : null,
-    [selected],
-  );
+  const result = useMemo(() => {
+    if (!activeId) return null;
+    const events = doses
+      .filter((d) => d.compoundId === activeId)
+      .map((d) => ({ at: d.at, amount: d.doseMg }));
+    if (events.length === 0) return null;
+    const start = Math.min(...events.map((e) => e.at));
+    const now = Date.now();
+    const pkEvents = events.map((e) => ({
+      atHours: (e.at - start) / HOUR,
+      amount: e.amount,
+    }));
+    const endHours = Math.max(1, (now - start) / HOUR);
+    const curve = curveForCompound(activeId, pkEvents, 0, endHours, 6);
+    const peak = Math.max(1e-9, ...curve.points.map((p) => p.level));
+    const current = curve.points[curve.points.length - 1]?.level ?? 0;
+    const steadyWeeks = Math.max(
+      1,
+      Math.round(hoursToSteadyState(curve.compound.halfLifeHours) / 24 / 7),
+    );
+    const atSteady = now - start >= hoursToSteadyState(curve.compound.halfLifeHours) * HOUR;
+    return {
+      curve,
+      currentPct: Math.round((current / peak) * 100),
+      steadyWeeks,
+      atSteady,
+    };
+  }, [activeId, doses]);
 
-  if (!premium) {
+  if (!canAccess("med_curve", entitlement)) {
     return (
       <div className="flex flex-col gap-4">
         <header className="flex flex-col gap-1">
@@ -68,11 +84,6 @@ export function Curve() {
     );
   }
 
-  const currentPct =
-    model && model.peakLevel > 0
-      ? Math.round((model.currentLevel / model.peakLevel) * 100)
-      : 0;
-
   return (
     <div className="flex flex-col gap-4">
       <header className="flex flex-col gap-1">
@@ -85,7 +96,7 @@ export function Curve() {
         </p>
       </header>
 
-      {logged.length === 0 || !selected || !model ? (
+      {!result || !activeId ? (
         <Card>
           <p className="text-sm text-muted">
             Log a few doses of an injectable to see your level build up over time.
@@ -96,20 +107,20 @@ export function Curve() {
           <Card title="Compound">
             <Field label="Showing">
               <Select
-                value={selected.compound.id}
+                value={activeId}
                 onChange={(e) => setCompoundId(e.target.value)}
               >
                 {logged.map((l) => (
-                  <option key={l.compound.id} value={l.compound.id}>
+                  <option key={l.id} value={l.id}>
                     {l.compound.displayName}
                   </option>
                 ))}
               </Select>
             </Field>
-            {model.estimated ? (
+            {result.curve.lowConfidence ? (
               <p className="mt-2 text-xs text-warning">
                 Estimated · low-confidence half-life — this curve is a rough
-                approximation for {selected.compound.displayName}.
+                approximation for {result.curve.compound.displayName}.
               </p>
             ) : null}
           </Card>
@@ -117,30 +128,30 @@ export function Curve() {
           <Card title="Where you are">
             <p className="text-sm text-text">
               Your level is around{" "}
-              <span className="font-display">{currentPct}%</span> of your highest
-              logged level.
+              <span className="font-display">{result.currentPct}%</span> of your
+              highest logged level.
             </p>
             <p className="mt-1 text-sm text-text">
-              {model.atSteadyState
-                ? `Based on your start date, your levels have likely stabilized (around week ${model.weeksToSteadyState}).`
-                : `Your levels are still building — they typically stabilize around week ${model.weeksToSteadyState} of consistent dosing.`}
+              {result.atSteady
+                ? `Based on your start date, your levels have likely stabilized (around week ${result.steadyWeeks}).`
+                : `Your levels are still building — they typically stabilize around week ${result.steadyWeeks} of consistent dosing.`}
             </p>
             <p className="mt-1 text-xs text-muted">
-              Half-life used: ~{Math.round(model.halfLifeHours / 24)} days.
+              Half-life used: ~{Math.round(result.curve.compound.halfLifeHours / 24)} days.
             </p>
           </Card>
 
           <Card title="Relative level over time">
-            <CurveChart model={model} />
+            <CurveChart points={result.curve.points} />
           </Card>
         </>
       )}
 
       <Card>
         <p className="text-xs text-muted">
-          Illustrative and relative only — this is not a measurement of the drug in
-          your blood, and it should not be used to time or change doses. Discuss any
-          changes with your provider.
+          Illustrative and relative only — not a measurement of the drug in your
+          blood, and not for timing or changing doses. Discuss any changes with your
+          provider.
         </p>
       </Card>
 

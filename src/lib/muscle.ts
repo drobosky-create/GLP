@@ -1,234 +1,97 @@
-/**
- * muscle.ts — protein-target + muscle-risk-flag logic (constants from Reference
- * Sheet §3). The single owner of the muscle-preservation concern (PRD §7.1).
- *
- * Everything here is GENERAL PUBLISHED GUIDANCE computed from the user's own logged
- * data — never a personalized prescription (Ref §3.2/§3.4). The risk flag is a
- * gentle, non-diagnostic nudge that refers the user OUTWARD to their provider; it
- * prescribes no number and generates no plan (Ref §3.3). It is wellness/tracking,
- * not clinical decision support. [Framing pending counsel review — PRD §9 / Ref §6.]
- */
+// muscle.ts — Muscle-preservation logic (Reference Sheet §3).
+//
+// NEUTRALITY / SAFETY (PRD §1.5, §9, Reference Sheet §3.4):
+//  - Everything here is GENERAL PUBLISHED GUIDANCE, never a personal prescription.
+//  - The risk flag is a soft, non-diagnostic nudge that refers the user to their
+//    provider. It never tells the user to change medication, dose, or eat a plan.
+//  - The exact rolling-window CUTOFFS below are product defaults and are marked
+//    [VERIFY] — have a clinician review them before they go live.
 
-import type { IntakeEntry, WeightEntry } from "../types";
+export type ProteinBasis = "bodyWeight" | "leanMass";
 
-const DAY_MS = 86_400_000;
-
-// Published protein ranges (g/kg/day unless noted) — Reference Sheet §3.2.
-export const PROTEIN = {
-  rangeLowPerKg: 1.2,
-  rangeHighPerKg: 1.6,
-  defaultPerKg: 1.4, // conservative mid-range default
-  floorPerKg: 0.5, // joint advisory: do not fall below 0.4–0.5
-  ceilingPerKg: 2.0, // joint advisory: avoid sustained ≥2.0
-  absoluteLow: 80, // alternative absolute target (g/day)
-  absoluteHigh: 120,
-  absoluteMid: 100,
-  perKgLeanMass: 1.5, // most accurate basis: 1.5 g/kg fat-free mass
-} as const;
-
-/**
- * Risk thresholds (Ref §3.3). The PATTERN is sourced; these exact cut-offs are
- * product judgment and need a clinician glance before go-live (Ref §6). Labeled as
- * such in the UI; nothing here is presented as a diagnosis.
- */
-export const RISK = {
-  fastLossPctPerWeek: 1.0, // weight dropping ≥ ~1%/week reads as "fast"
-  proteinUnderTargetFrac: 0.9, // avg intake below 90% of target = "under target"
-  leanLossPctPerWeek: 0.75, // lean-mass dropping faster than this = concern
-  windowDays: 7,
-} as const;
-
-function round5(n: number): number {
-  return Math.round(n / 5) * 5;
-}
-
-// ---- Lean mass ----
-
-export function leanMassKg(weightKg: number, bodyFatPct: number): number {
-  return weightKg * (1 - bodyFatPct / 100);
-}
-
-// ---- Protein target (general guidance) ----
-
-export type ProteinBasis = "bodyWeight" | "leanMass" | "absolute";
-
-export interface ProteinTarget {
+export interface ProteinTargetRange {
+  lowGramsPerDay: number;
+  highGramsPerDay: number;
   basis: ProteinBasis;
-  low: number | null;
-  high: number | null;
-  target: number | null; // mid-range guidance value, g/day
   note: string;
-  missing?: string; // what the user must log to use this basis
 }
 
-export function computeProteinTarget(
-  basis: ProteinBasis,
-  latestWeightKg?: number,
-  latestBodyFatPct?: number,
-): ProteinTarget {
-  if (basis === "absolute") {
-    return {
-      basis,
-      low: PROTEIN.absoluteLow,
-      high: PROTEIN.absoluteHigh,
-      target: PROTEIN.absoluteMid,
-      note: "General published range (80–120 g/day). Your provider may set a different target.",
-    };
-  }
+// Published ranges (Reference Sheet §3.2). Active weight-loss commonly cited 1.2–1.6 g/kg.
+const G_PER_KG_LOW = 1.2;
+const G_PER_KG_HIGH = 1.6;
+// Joint-advisory guardrails:
+const FLOOR_G_PER_KG = 0.5;   // do not go below ~0.4–0.5 g/kg/day
+const CEILING_G_PER_KG = 2.0; // avoid sustained >= 2.0 g/kg/day
+const ABSOLUTE_FLOOR = 80;    // alternative absolute target 80–120 g/day
+const ABSOLUTE_CEILING = 120;
 
-  if (basis === "leanMass") {
-    if (latestWeightKg == null || latestBodyFatPct == null) {
-      return {
-        basis,
-        low: null,
-        high: null,
-        target: null,
-        note: "The most accurate basis uses fat-free mass.",
-        missing: "Log a weight with body-fat % to use the lean-mass basis.",
-      };
-    }
-    const lean = leanMassKg(latestWeightKg, latestBodyFatPct);
-    return {
-      basis,
-      low: round5(lean * PROTEIN.rangeLowPerKg),
-      high: round5(lean * PROTEIN.rangeHighPerKg),
-      target: round5(lean * PROTEIN.perKgLeanMass),
-      note: "Based on estimated fat-free mass (1.5 g/kg). General guidance — your provider may set a different target.",
-    };
+/**
+ * General protein target RANGE. `massKg` is body weight (or lean/fat-free mass if
+ * basis="leanMass", which §3.2 notes is the most accurate basis). Result is clamped
+ * to the published guardrails. Present in UI as guidance, not a prescription.
+ */
+export function proteinTargetRange(massKg: number, basis: ProteinBasis = "bodyWeight"): ProteinTargetRange {
+  if (!Number.isFinite(massKg) || massKg <= 0) {
+    throw new Error("muscle: massKg must be a positive number.");
   }
-
-  // bodyWeight
-  if (latestWeightKg == null) {
-    return {
-      basis,
-      low: null,
-      high: null,
-      target: null,
-      note: "General guidance — your provider may set a different target.",
-      missing: "Log a weight to use the body-weight basis.",
-    };
-  }
+  const low = Math.max(massKg * G_PER_KG_LOW, ABSOLUTE_FLOOR);
+  const high = Math.min(massKg * G_PER_KG_HIGH, massKg * CEILING_G_PER_KG);
   return {
+    lowGramsPerDay: Math.round(Math.max(low, massKg * FLOOR_G_PER_KG)),
+    highGramsPerDay: Math.round(Math.min(high, Math.max(high, ABSOLUTE_CEILING))),
     basis,
-    low: round5(latestWeightKg * PROTEIN.rangeLowPerKg),
-    high: round5(latestWeightKg * PROTEIN.rangeHighPerKg),
-    target: round5(latestWeightKg * PROTEIN.defaultPerKg),
-    note: "General guidance (1.2–1.6 g/kg). Using actual body weight can overestimate needs for people with obesity — your provider may set a different target.",
+    note:
+      basis === "leanMass"
+        ? "General guidance (~1.2–1.6 g/kg of lean mass). Your provider may set a different target."
+        : "General guidance (~1.2–1.6 g/kg body weight). Using total body weight can overestimate needs; your provider may set a different target.",
   };
 }
 
-// ---- Protein adherence over a rolling window ----
-
-export interface Adherence {
-  daysLogged: number;
-  avgProteinG: number | null;
-  pctOfTarget: number | null;
-  underTarget: boolean;
+export interface MuscleRiskInput {
+  startWeightKg: number;
+  currentWeightKg: number;
+  weeksElapsed: number;
+  /** avg daily protein over the recent window, grams */
+  avgDailyProteinG: number;
+  /** the user's chosen daily target, grams */
+  proteinTargetG: number;
 }
 
-export function proteinAdherence(
-  intakeEntries: IntakeEntry[],
-  targetGrams: number | null,
-  now: number,
-  windowDays: number = RISK.windowDays,
-): Adherence {
-  const cutoff = now - windowDays * DAY_MS;
-  const perDay = new Map<string, number>();
-  for (const e of intakeEntries) {
-    if (e.proteinG == null) continue;
-    const t = Date.parse(e.datetime);
-    if (t < cutoff || t > now) continue;
-    const dayKey = new Date(t).toDateString();
-    perDay.set(dayKey, (perDay.get(dayKey) ?? 0) + e.proteinG);
-  }
-  const daysLogged = perDay.size;
-  if (daysLogged === 0) {
-    return { daysLogged: 0, avgProteinG: null, pctOfTarget: null, underTarget: false };
-  }
-  const avg =
-    [...perDay.values()].reduce((s, v) => s + v, 0) / daysLogged;
-  const pct = targetGrams && targetGrams > 0 ? avg / targetGrams : null;
-  return {
-    daysLogged,
-    avgProteinG: Math.round(avg),
-    pctOfTarget: pct,
-    underTarget: pct != null && pct < RISK.proteinUnderTargetFrac,
-  };
-}
-
-// ---- Rates ----
-
-/** Weight-loss rate as % of body weight per week over the window (positive = loss). */
-function weightLossPctPerWeek(
-  weights: WeightEntry[],
-  now: number,
-  windowDays: number,
-): number | null {
-  const cutoff = now - windowDays * DAY_MS;
-  const recent = weights
-    .map((w) => ({ t: Date.parse(w.datetime), w: w.weightKg }))
-    .filter((p) => p.t >= cutoff && p.t <= now)
-    .sort((a, b) => a.t - b.t);
-  if (recent.length < 2) return null;
-  const first = recent[0];
-  const last = recent[recent.length - 1];
-  const days = (last.t - first.t) / DAY_MS;
-  if (days <= 0 || first.w <= 0) return null;
-  const pctLoss = ((first.w - last.w) / first.w) * 100;
-  return (pctLoss / days) * 7;
-}
-
-/** Lean-mass loss rate as % per week, when body-fat % is logged. */
-function leanLossPctPerWeek(
-  weights: WeightEntry[],
-  now: number,
-  windowDays: number,
-): number | null {
-  const cutoff = now - windowDays * DAY_MS;
-  const recent = weights
-    .filter((w) => w.bodyFatPct != null)
-    .map((w) => ({
-      t: Date.parse(w.datetime),
-      lean: leanMassKg(w.weightKg, w.bodyFatPct as number),
-    }))
-    .filter((p) => p.t >= cutoff && p.t <= now)
-    .sort((a, b) => a.t - b.t);
-  if (recent.length < 2) return null;
-  const first = recent[0];
-  const last = recent[recent.length - 1];
-  const days = (last.t - first.t) / DAY_MS;
-  if (days <= 0 || first.lean <= 0) return null;
-  const pctLoss = ((first.lean - last.lean) / first.lean) * 100;
-  return (pctLoss / days) * 7;
-}
-
-// ---- The gentle, non-diagnostic muscle-risk flag (Ref §3.3) ----
-
-export interface RiskResult {
+export interface MuscleRiskResult {
   flagged: boolean;
-  message: string | null;
+  weeklyLossPctOfBody: number;
+  proteinGapG: number; // positive => under target
+  message?: string;
 }
 
-export function muscleRiskFlag(
-  weights: WeightEntry[],
-  adherence: Adherence,
-  now: number,
-  windowDays: number = RISK.windowDays,
-): RiskResult {
-  const lossRate = weightLossPctPerWeek(weights, now, windowDays);
-  const fastLoss = lossRate != null && lossRate >= RISK.fastLossPctPerWeek;
+// --- TUNABLE thresholds [VERIFY with a clinician before launch] ---
+const FAST_LOSS_PCT_PER_WEEK = 1.0; // losing >1% of body weight/week is "fast"
+const PROTEIN_UNDER_FRACTION = 0.85; // averaging <85% of target counts as "under"
 
-  const leanRate = leanLossPctPerWeek(weights, now, windowDays);
-  const fastLeanLoss = leanRate != null && leanRate >= RISK.leanLossPctPerWeek;
+/**
+ * Soft, non-diagnostic risk pattern (Reference Sheet §3.3): fast weight loss AND
+ * protein consistently under target. Returns a gentle, provider-referring message.
+ */
+export function muscleRiskFlag(input: MuscleRiskInput): MuscleRiskResult {
+  const { startWeightKg, currentWeightKg, weeksElapsed, avgDailyProteinG, proteinTargetG } = input;
+  if (weeksElapsed <= 0 || startWeightKg <= 0) {
+    return { flagged: false, weeklyLossPctOfBody: 0, proteinGapG: 0 };
+  }
+  const lostKg = startWeightKg - currentWeightKg;
+  const weeklyLossPctOfBody = (lostKg / startWeightKg) * 100 / weeksElapsed;
+  const proteinGapG = proteinTargetG - avgDailyProteinG;
 
-  const flagged = (fastLoss && adherence.underTarget) || fastLeanLoss;
-  if (!flagged) return { flagged: false, message: null };
+  const lossFast = weeklyLossPctOfBody > FAST_LOSS_PCT_PER_WEEK;
+  const proteinUnder = avgDailyProteinG < proteinTargetG * PROTEIN_UNDER_FRACTION;
 
-  // Suggested copy (Ref §3.3): describes the user's own pattern, refers outward,
-  // prescribes nothing.
+  const flagged = lossFast && proteinUnder;
   return {
-    flagged: true,
-    message:
-      "Your weight has been dropping quickly and your protein has been under your target recently. Muscle protection is worth raising with your provider — protein and resistance training are the usual levers.",
+    flagged,
+    weeklyLossPctOfBody,
+    proteinGapG,
+    message: flagged
+      ? "Your weight has been dropping quickly and your protein has been under your target. " +
+        "Muscle protection is worth raising with your provider — protein and resistance training are the usual levers."
+      : undefined,
   };
 }

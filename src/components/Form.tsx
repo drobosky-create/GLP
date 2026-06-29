@@ -60,39 +60,39 @@ function pad(n: number): string {
   return n.toString().padStart(2, "0");
 }
 
-/** ISO string -> value for <input type="datetime-local"> in the user's local zone. */
-function isoToLocalInput(iso: string): string {
-  const d = new Date(iso);
+/** Epoch ms -> value for <input type="datetime-local"> in the user's local zone. */
+function msToLocalInput(ms: number): string {
+  const d = new Date(ms);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
     d.getHours(),
   )}:${pad(d.getMinutes())}`;
 }
 
-/** datetime-local field that reads and writes ISO strings; conversion stays here. */
+/** datetime-local field that reads and writes epoch ms; conversion stays here. */
 export function DateTimeField({
   label,
   value,
   onChange,
 }: {
   label: string;
-  value: string;
-  onChange: (iso: string) => void;
+  value: number;
+  onChange: (ms: number) => void;
 }) {
   return (
     <Field label={label}>
       <input
         type="datetime-local"
         className={controlClass}
-        value={isoToLocalInput(value)}
-        onChange={(e) => onChange(new Date(e.target.value).toISOString())}
+        value={msToLocalInput(value)}
+        onChange={(e) => onChange(new Date(e.target.value).getTime())}
       />
     </Field>
   );
 }
 
-/** Human-friendly timestamp for list rows. */
-export function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+/** Human-friendly timestamp (epoch ms) for list rows. */
+export function formatWhen(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
     hour: "numeric",

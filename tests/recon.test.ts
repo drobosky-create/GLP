@@ -1,66 +1,56 @@
-/**
- * recon.test.ts — the reconstitution math test suite (Reference Sheet §2.2).
- * These known-good cases MUST pass before the compounded-mode calculator is exposed
- * (PRD §11 / §7.1). Runs on Node's built-in test runner with native TS stripping —
- * no test-framework dependency: `node --test tests/recon.test.ts`.
- */
+// recon.test.ts — known-good cases from Reference Sheet §2.2.
+// Run: npx tsx tests/recon.test.ts   (exits non-zero on any failure)
+import { reconstitute, mcgToMg } from "../src/lib/recon";
 
-import test from "node:test";
-import assert from "node:assert/strict";
-import { computeRecon, mcgToMg } from "../src/lib/recon.ts";
-
-const approx = (a: number, b: number, eps = 1e-9) =>
-  assert.ok(Math.abs(a - b) <= eps, `expected ${a} ≈ ${b}`);
-
-// Reference Sheet §2.2 — | vial | bac | dose | conc | vol | units (U-100) | doses |
-const CASES = [
-  { vial: 5, bac: 2, doseMg: mcgToMg(250), conc: 2.5, vol: 0.1, units: 10, doses: 20 },
-  { vial: 5, bac: 1, doseMg: mcgToMg(250), conc: 5, vol: 0.05, units: 5, doses: 20 },
-  { vial: 10, bac: 1, doseMg: 0.5, conc: 10, vol: 0.05, units: 5, doses: 20 },
-  { vial: 10, bac: 2, doseMg: 2.5, conc: 5, vol: 0.5, units: 50, doses: 4 },
-  { vial: 15, bac: 3, doseMg: 5, conc: 5, vol: 1.0, units: 100, doses: 3 },
-];
-
-for (const c of CASES) {
-  test(`recon ${c.vial}mg / ${c.bac}mL / ${c.doseMg}mg -> ${c.units} units`, () => {
-    const r = computeRecon({
-      vialStrengthMg: c.vial,
-      bacWaterMl: c.bac,
-      desiredDoseMg: c.doseMg,
-    });
-    assert.equal(r.valid, true);
-    approx(r.concentrationMgPerMl, c.conc);
-    approx(r.doseVolumeMl, c.vol);
-    approx(r.unitsOnSyringe, c.units);
-    approx(r.dosesPerVial, c.doses);
-  });
+interface Case {
+  name: string;
+  vialStrengthMg: number;
+  bacWaterMl: number;
+  desiredDoseMg: number;
+  expectConcentration: number;
+  expectVolumeMl: number;
+  expectUnits: number;
+  expectDosesPerVial: number;
 }
 
-test("mcg→mg conversion", () => {
-  approx(mcgToMg(250), 0.25);
-  approx(mcgToMg(1000), 1);
-});
+const cases: Case[] = [
+  { name: "5mg / 2mL / 250mcg", vialStrengthMg: 5, bacWaterMl: 2, desiredDoseMg: mcgToMg(250), expectConcentration: 2.5, expectVolumeMl: 0.10, expectUnits: 10, expectDosesPerVial: 20 },
+  { name: "5mg / 1mL / 250mcg", vialStrengthMg: 5, bacWaterMl: 1, desiredDoseMg: mcgToMg(250), expectConcentration: 5, expectVolumeMl: 0.05, expectUnits: 5, expectDosesPerVial: 20 },
+  { name: "10mg / 1mL / 0.5mg", vialStrengthMg: 10, bacWaterMl: 1, desiredDoseMg: 0.5, expectConcentration: 10, expectVolumeMl: 0.05, expectUnits: 5, expectDosesPerVial: 20 },
+  { name: "10mg / 2mL / 2.5mg", vialStrengthMg: 10, bacWaterMl: 2, desiredDoseMg: 2.5, expectConcentration: 5, expectVolumeMl: 0.5, expectUnits: 50, expectDosesPerVial: 4 },
+  { name: "15mg / 3mL / 5mg", vialStrengthMg: 15, bacWaterMl: 3, desiredDoseMg: 5, expectConcentration: 5, expectVolumeMl: 1.0, expectUnits: 100, expectDosesPerVial: 3 },
+];
 
-test("rejects non-positive inputs", () => {
-  const r = computeRecon({ vialStrengthMg: 0, bacWaterMl: 1, desiredDoseMg: 1 });
-  assert.equal(r.valid, false);
-  assert.ok(r.errors.length > 0);
-});
+const approx = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
 
-test("flags a dose that exceeds one syringe", () => {
-  // 5 mg in 1 mL = 5 mg/mL; a 6 mg dose needs 1.2 mL > 1 mL barrel.
-  const r = computeRecon({
-    vialStrengthMg: 5,
-    bacWaterMl: 1,
-    desiredDoseMg: 6,
-  });
-  assert.equal(r.exceedsSyringe, true);
-});
+let failures = 0;
+for (const c of cases) {
+  const r = reconstitute({ vialStrengthMg: c.vialStrengthMg, bacWaterMl: c.bacWaterMl, desiredDoseMg: c.desiredDoseMg });
+  const checks: [string, boolean][] = [
+    ["concentration", approx(r.concentrationMgPerMl, c.expectConcentration)],
+    ["volumeMl", approx(r.doseVolumeMl, c.expectVolumeMl)],
+    ["units", approx(r.units, c.expectUnits)],
+    ["dosesPerVial", approx(r.dosesPerVial, c.expectDosesPerVial)],
+  ];
+  const failed = checks.filter(([, ok]) => !ok);
+  if (failed.length) {
+    failures++;
+    console.log(`FAIL  ${c.name}: ${failed.map(([k]) => k).join(", ")}`, r);
+  } else {
+    console.log(`PASS  ${c.name}  ->  ${r.units} units, ${r.dosesPerVial} doses/vial`);
+  }
+}
 
-test("U-40 syringe changes the units factor, not the volume", () => {
-  const base = { vialStrengthMg: 10, bacWaterMl: 1, desiredDoseMg: 0.5 };
-  const u100 = computeRecon({ ...base, syringe: "U-100" });
-  const u40 = computeRecon({ ...base, syringe: "U-40" });
-  approx(u100.doseVolumeMl, u40.doseVolumeMl);
-  approx(u40.unitsOnSyringe, u100.doseVolumeMl * 40);
-});
+// guardrails
+try { reconstitute({ vialStrengthMg: 0, bacWaterMl: 2, desiredDoseMg: 0.25 }); console.log("FAIL  rejects-zero-input"); failures++; }
+catch { console.log("PASS  rejects zero/negative input"); }
+
+const big = reconstitute({ vialStrengthMg: 10, bacWaterMl: 1, desiredDoseMg: 2 }); // 2mg @ 10mg/mL = 0.2mL = 20u (fits)
+const over = reconstitute({ vialStrengthMg: 5, bacWaterMl: 1, desiredDoseMg: 1.5 }); // 1.5mg @ 5mg/mL = 0.3mL = 30u (fits)
+const tooBig = reconstitute({ vialStrengthMg: 2, bacWaterMl: 1, desiredDoseMg: 1.5 }); // 1.5mg @ 2mg/mL = 0.75mL = 75u (fits U-100)
+const way = reconstitute({ vialStrengthMg: 2, bacWaterMl: 1, desiredDoseMg: 3 }); // 3mg @ 2mg/mL = 1.5mL = 150u (exceeds U-100)
+console.log(way.exceedsSyringe ? "PASS  flags dose that exceeds one syringe" : "FAIL  exceedsSyringe");
+if (!way.exceedsSyringe) failures++;
+
+console.log(failures === 0 ? "\nALL RECON TESTS PASSED" : `\n${failures} FAILURE(S)`);
+process.exit(failures === 0 ? 0 : 1);

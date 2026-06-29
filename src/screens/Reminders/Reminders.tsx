@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAppStore } from "../../state/store";
-import type { Reminder } from "../../types";
+import type { Reminder } from "../../lib/notify";
 import { Button, Card, Field, Select } from "../../components/Form";
 import {
   getPermission,

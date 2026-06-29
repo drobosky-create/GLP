@@ -17,7 +17,22 @@
 
 import { Capacitor } from "@capacitor/core";
 import type { Weekday } from "@capacitor/local-notifications";
-import type { Reminder } from "../types";
+
+/**
+ * Reminder is an app-layer notification setting (not part of the persisted clinical
+ * core/AppData), so this module owns its shape. Stored via prefs (localStorage) by
+ * the store, scheduled here.
+ */
+export interface Reminder {
+  id: string;
+  kind: "dose" | "weighin";
+  enabled: boolean;
+  hour: number; // 0–23 local
+  minute: number; // 0–59
+  weekday?: number; // ISO 1=Mon … 7=Sun; set => weekly, unset => daily
+  title: string;
+  body: string;
+}
 
 export type NotifPermission = "granted" | "denied" | "default" | "unsupported";
 

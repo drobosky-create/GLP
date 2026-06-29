@@ -1,159 +1,132 @@
-/**
- * billing.ts — the ONLY place that touches Stripe (external link) + store IAP, and
- * the single owner of the Entitlement record (PRD §6, §7.1). Screens never import
- * this; they go through the store, which delegates here.
- *
- * Dual paywall (§6): an external link to Stripe Checkout opened in the SYSTEM
- * browser (never a webview) + store IAP alongside, with one shared Entitlement
- * interface. Live keys/links come from env at go-live on a SEPARATE Stripe account
- * (human checkpoint) — none are committed. Link-purchase analytics are captured from
- * day one, and the flow is architected so Apple's Link-Entitlement commission/
- * reporting step can be switched on later without a rewrite.
- *
- * Neutrality (§1.5): this sells app premium features only — never a substance, dose,
- * pharmacy, or product. No reorder/storefront surfaces anywhere.
- */
+// billing.ts — the ONLY module that owns subscription/entitlement logic (PRD §6).
+//
+// Pure logic here: trial state, what counts as "entitled", feature gating, and
+// turning a CONFIRMED purchase from either channel into one Entitlement. The actual
+// network calls live in thin adapters Claude Code wires up:
+//   - Stripe external link  -> open system browser to Checkout (US, post–Epic v. Apple)
+//   - Apple StoreKit / Google Play Billing -> native IAP
+//   - receipt/webhook verification -> server or RevenueCat
+// Both channels resolve to the SAME Entitlement through applyPurchase().
+//
+// SAFETY (PRD §5): a purchase is only applied when explicitly confirmed — no charge
+// or upgrade without an unmistakable user action. Cancelling preserves access until
+// the period ends (no surprise lockout), and there are no silent renewals here.
 
-import type { BillingEvent, Entitlement, EntitlementTier } from "../types";
-import { db } from "./db";
+import { Entitlement, PurchaseChannel } from "../types";
 
-const DAY_MS = 86_400_000;
+const DAY = 86_400_000;
 
-export const BILLING_CONFIG = {
-  trialDays: 7,
-  // Publishable Stripe Payment Links only (never secret keys). Supplied at go-live
-  // via env on the separate account; blank until the Stripe-confirmation checkpoint.
-  fallbackCheckoutUrl: (import.meta.env.VITE_STRIPE_CHECKOUT_URL as string) ?? "",
-  // Apple Link-Entitlement reporting can be enabled later without a rewrite.
-  linkCommissionReportingEnabled: false,
-};
+export type AccessLevel = "free" | "trial" | "pro";
 
-export interface Plan {
-  id: "annual" | "monthly";
-  label: string;
-  priceLabel: string;
-  cadence: string;
-  stripeLink: string;
-  storeProductId: string;
-}
+export type Feature =
+  | "dose_log" | "reminders"          // FREE
+  | "report" | "muscle" | "med_curve" | "photo_progress" | "export"; // PRO
 
-// Pricing sits upper-middle of the band (§6): annual is the default.
-export const PLANS: Plan[] = [
-  {
-    id: "annual",
-    label: "Annual",
-    priceLabel: "$59 / year",
-    cadence: "billed yearly",
-    stripeLink: (import.meta.env.VITE_STRIPE_ANNUAL_LINK as string) ?? "",
-    storeProductId: "glp1_premium_annual",
-  },
-  {
-    id: "monthly",
-    label: "Monthly",
-    priceLabel: "$9 / month",
-    cadence: "billed monthly",
-    stripeLink: (import.meta.env.VITE_STRIPE_MONTHLY_LINK as string) ?? "",
-    storeProductId: "glp1_premium_monthly",
-  },
-];
+const FREE_FEATURES = new Set<Feature>(["dose_log", "reminders"]);
 
-export interface BillingResult {
-  ok: boolean;
-  reason: string;
-}
+export const freeEntitlement = (): Entitlement => ({ tier: "free" });
 
-// ---- Entitlement logic (pure) ----
-
-export function startTrial(now: number): Entitlement {
-  return {
-    tier: "trial",
-    trialEnd: new Date(now + BILLING_CONFIG.trialDays * DAY_MS).toISOString(),
-  };
-}
-
-/** Resolves the live tier, accounting for trial expiry. */
-export function effectiveTier(
-  ent: Entitlement | null,
-  now: number,
-): EntitlementTier {
-  if (!ent) return "free";
-  if (ent.tier === "premium") return "premium";
-  if (ent.tier === "trial" && ent.trialEnd && Date.parse(ent.trialEnd) > now) {
-    return "trial";
-  }
+/** Current access level, derived (never trust a stored boolean alone). */
+export function accessLevel(ent: Entitlement, now: number = Date.now()): AccessLevel {
+  if (ent.trialEnd && now < ent.trialEnd) return "trial";
+  if (ent.tier === "pro" && (ent.paidUntil === undefined || now < ent.paidUntil)) return "pro";
   return "free";
 }
 
-export function isPremium(ent: Entitlement | null, now: number): boolean {
-  const t = effectiveTier(ent, now);
-  return t === "premium" || t === "trial";
+export const isEntitled = (ent: Entitlement, now: number = Date.now()): boolean =>
+  accessLevel(ent, now) !== "free";
+
+/** Feature gating: free features always pass; everything else needs entitlement. */
+export function canAccess(feature: Feature, ent: Entitlement, now: number = Date.now()): boolean {
+  return FREE_FEATURES.has(feature) || isEntitled(ent, now);
 }
 
-export function trialDaysLeft(
-  ent: Entitlement | null,
-  now: number,
-): number | null {
-  if (!ent || ent.tier !== "trial" || !ent.trialEnd) return null;
-  const ms = Date.parse(ent.trialEnd) - now;
-  return ms > 0 ? Math.ceil(ms / DAY_MS) : 0;
+/** Start the free trial. Trial is an overlay; paid tier stays "free" until purchase. */
+export function startTrial(now: number = Date.now(), days = 7, base?: Entitlement): Entitlement {
+  const ent = base ?? freeEntitlement();
+  if (ent.trialEnd) return ent; // never restart a trial
+  return { ...ent, trialEnd: now + days * DAY };
 }
 
-// ---- Analytics capture (day one, §6) ----
-
-export async function captureBillingEvent(
-  ev: Omit<BillingEvent, "id" | "datetime">,
-): Promise<void> {
-  await db.billingEvents.save({
-    id: crypto.randomUUID(),
-    datetime: new Date().toISOString(),
-    ...ev,
-  });
+export function daysLeftInTrial(ent: Entitlement, now: number = Date.now()): number {
+  if (!ent.trialEnd || now >= ent.trialEnd) return 0;
+  return Math.ceil((ent.trialEnd - now) / DAY);
 }
 
-// ---- Purchase channels ----
+export interface PurchaseResult {
+  confirmed: boolean;        // MUST be true — explicit user confirmation (PRD §5)
+  periodEndMs: number;       // current paid period end
+  autoRenew: boolean;
+  stripeCustomerId?: string; // when channel = stripe_link
+}
 
-/**
- * Stripe external link (§6). Opens the SYSTEM browser — on web that's a new tab; on
- * native the Apple-compliant default-browser presentation is finalized at submission
- * (gated). Never a webview. No charge happens here — the user confirms in Checkout.
- */
-export async function openCheckout(plan: Plan): Promise<BillingResult> {
-  await captureBillingEvent({
-    type: "checkout_start",
+/** Apply a confirmed purchase from either channel. Throws if not confirmed. */
+export function applyPurchase(
+  channel: PurchaseChannel,
+  result: PurchaseResult,
+  base?: Entitlement,
+): Entitlement {
+  if (!result.confirmed) {
+    throw new Error("billing: refusing to grant entitlement without explicit confirmation.");
+  }
+  const ent = base ?? freeEntitlement();
+  return {
+    ...ent,
+    tier: "pro",
+    paidUntil: result.periodEndMs,
+    autoRenew: result.autoRenew,
+    channel,
+    stripeCustomerId: result.stripeCustomerId ?? ent.stripeCustomerId,
+  };
+}
+
+/** Cancel auto-renew but keep access until the paid period ends (no surprise lockout). */
+export function cancelAutoRenew(ent: Entitlement): Entitlement {
+  return { ...ent, autoRenew: false };
+}
+
+// ---- Paywall presentation (PRD §6: show BOTH channels, let the user choose) ----
+
+export interface PriceConfig {
+  webMonthlyDisplay: string;   // e.g. "$9.99/mo"
+  webAnnualDisplay: string;    // e.g. "$59.99/yr"
+  iapMonthlyDisplay: string;
+  iapAnnualDisplay: string;
+  /** Apple "Link Entitlement" reporting toggle — off today, switchable later (§6). */
+  linkCommissionEnabled?: boolean;
+}
+
+export interface PaywallOption {
+  channel: PurchaseChannel;
+  label: string;
+  monthlyDisplay: string;
+  annualDisplay: string;
+  note: string;
+}
+
+/** Build the options to render. On iOS we show stripe_link + apple_iap; on Android, google_iap. */
+export function buildPaywall(platform: "ios" | "android" | "web", cfg: PriceConfig): PaywallOption[] {
+  const web: PaywallOption = {
     channel: "stripe_link",
-    plan: plan.id,
-  });
-  const url = plan.stripeLink || BILLING_CONFIG.fallbackCheckoutUrl;
-  if (!url) {
-    return { ok: false, reason: "Checkout link not configured yet." };
-  }
-  if (typeof window !== "undefined") {
-    window.open(url, "_blank", "noopener");
-  }
-  return { ok: true, reason: "Opened secure checkout in your browser." };
+    label: "Subscribe on the web",
+    monthlyDisplay: cfg.webMonthlyDisplay,
+    annualDisplay: cfg.webAnnualDisplay,
+    note: "Opens a secure checkout in your browser.",
+  };
+  const iap: PaywallOption = {
+    channel: platform === "android" ? "google_iap" : "apple_iap",
+    label: "Subscribe in-app",
+    monthlyDisplay: cfg.iapMonthlyDisplay,
+    annualDisplay: cfg.iapAnnualDisplay,
+    note: "Billed through your app store account.",
+  };
+  if (platform === "web") return [web];
+  return [web, iap]; // both, per §6
 }
 
-/**
- * Store IAP (Apple/Google) — wired at native time behind store credentials and
- * optionally RevenueCat (§6 / gated). Not available on web.
- */
-export async function purchaseViaStore(plan: Plan): Promise<BillingResult> {
-  await captureBillingEvent({
-    type: "iap_attempt",
-    channel: "store_iap",
-    plan: plan.id,
-  });
-  return {
-    ok: false,
-    reason: "In-app purchase is available in the native app.",
-  };
-}
+export interface LinkAttribution { channel: PurchaseChannel; at: number; }
 
-/** Restore/reconcile entitlement from Stripe + store receipts (gated/backend). */
-export async function restorePurchases(): Promise<BillingResult> {
-  await captureBillingEvent({ type: "restore_attempt" });
-  return {
-    ok: false,
-    reason: "Purchase restore activates with the native app and backend.",
-  };
+/** Record that a purchase originated from the external link (for later §6 reporting). */
+export function recordLinkAttribution(at: number = Date.now()): LinkAttribution {
+  return { channel: "stripe_link", at };
 }

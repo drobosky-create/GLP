@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useAppStore } from "../../state/store";
-import { COMPOUNDS, getCompound } from "../../lib/peptides";
+import { COMPOUNDS, compoundById } from "../../lib/peptides";
 import { Button, Card, Field, TextInput } from "../../components/Form";
 
 /**
@@ -102,7 +102,7 @@ export function Stacks() {
                   </span>
                   <span className="text-xs text-muted">
                     {stack.compoundIds
-                      .map((id) => getCompound(id)?.displayName ?? id)
+                      .map((id) => compoundById(id)?.displayName ?? id)
                       .join(" · ")}
                   </span>
                 </div>

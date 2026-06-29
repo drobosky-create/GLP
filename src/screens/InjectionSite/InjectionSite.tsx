@@ -5,7 +5,7 @@ import { INJECTION_SITES, siteUsage, suggestNextSite } from "./sites";
 
 /** Injection-site rotation map (MVP §3 item 2) — visual map + "where next". */
 export function InjectionSite() {
-  const doseEvents = useAppStore((s) => s.doseEvents);
+  const doseEvents = useAppStore((s) => s.doses);
   const setScreen = useAppStore((s) => s.setScreen);
 
   const usage = siteUsage(doseEvents);

@@ -1,93 +1,76 @@
-import { layoutChart, type ReportModel } from "../lib/report";
+import type { ReportModel } from "../lib/report";
 
 /**
- * ReportChart — shared presentational SVG chart (PRD §7.1: presentational only).
- * Renders from the SAME layoutChart geometry the PDF uses, so screen and export
- * match. Colors reference theme.css tokens via CSS vars (no raw hex — §13).
+ * ReportChart — shared presentational SVG (PRD §7.1: presentational only). Consumes
+ * the core ReportModel: weight trend line + vertical markers at dose increases.
+ * Colors reference theme.css tokens via CSS vars (no raw hex — §13).
  */
 const W = 340;
-const H = 210;
+const H = 200;
+const PAD = { l: 30, r: 12, t: 14, b: 24 };
 
 export function ReportChart({ model }: { model: ReportModel }) {
-  const c = layoutChart(model, W, H);
-  const toPoints = (pts: { x: number; y: number }[]) =>
-    pts.map((p) => `${p.x},${p.y}`).join(" ");
+  const pts = model.weight.points;
+  const plot = { x: PAD.l, y: PAD.t, w: W - PAD.l - PAD.r, h: H - PAD.t - PAD.b };
+  const t0 = model.periodStart;
+  const t1 = Math.max(model.periodEnd, model.periodStart + 1);
+  const tSpan = t1 - t0;
+  const sx = (t: number) => plot.x + ((t - t0) / tSpan) * plot.w;
+
+  const kgs = pts.map((p) => p.kg);
+  const kgMin = kgs.length ? Math.min(...kgs) : 0;
+  const kgMax = kgs.length ? Math.max(...kgs) : 1;
+  const kgSpan = Math.max(1e-6, kgMax - kgMin);
+  const sy = (kg: number) => plot.y + plot.h - ((kg - kgMin) / kgSpan) * plot.h;
+
+  const line = pts.map((p) => `${sx(p.at)},${sy(p.kg)}`).join(" ");
 
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       className="w-full"
       role="img"
-      aria-label="Dose, weight, and side-effect timeline"
+      aria-label="Weight trend with dose-increase markers"
     >
-      {/* plot frame */}
-      <rect
-        x={c.plot.x}
-        y={c.plot.y}
-        width={c.plot.w}
-        height={c.plot.h}
-        fill="none"
+      <line
+        x1={plot.x}
+        y1={plot.y + plot.h}
+        x2={plot.x + plot.w}
+        y2={plot.y + plot.h}
         style={{ stroke: "var(--color-border)" }}
         strokeWidth={1}
       />
 
-      {/* dose tick labels (left) */}
-      {c.doseTicks.map((t, i) => (
-        <text
-          key={`d${i}`}
-          x={c.plot.x - 4}
-          y={t.y + 3}
-          textAnchor="end"
-          fontSize={7}
-          style={{ fill: "var(--color-muted)" }}
-        >
-          {t.label}
-        </text>
-      ))}
-
-      {/* x tick labels */}
-      {c.xTicks.map((t, i) => (
-        <text
-          key={`x${i}`}
-          x={t.x}
-          y={c.plot.y + c.plot.h + 12}
-          textAnchor="middle"
-          fontSize={7}
-          style={{ fill: "var(--color-muted)" }}
-        >
-          {t.label}
-        </text>
-      ))}
-
-      {/* dose step */}
-      {c.doseStep.length > 1 ? (
-        <polyline
-          points={toPoints(c.doseStep)}
-          fill="none"
+      {/* dose-increase markers */}
+      {model.doseIncreases.map((inc, i) => (
+        <line
+          key={i}
+          x1={sx(inc.at)}
+          y1={plot.y}
+          x2={sx(inc.at)}
+          y2={plot.y + plot.h}
           style={{ stroke: "var(--color-accent)" }}
-          strokeWidth={1.6}
+          strokeWidth={1}
+          strokeDasharray="2 3"
         />
-      ) : null}
+      ))}
 
-      {/* weight line */}
-      {c.weightLine.length > 1 ? (
+      {/* weight trend */}
+      {pts.length > 1 ? (
         <polyline
-          points={toPoints(c.weightLine)}
+          points={line}
           fill="none"
           style={{ stroke: "var(--color-accent-alt)" }}
-          strokeWidth={1.6}
+          strokeWidth={1.8}
         />
       ) : null}
-
-      {/* effect markers */}
-      {c.effects.map((e, i) => (
+      {pts.map((p, i) => (
         <circle
-          key={`e${i}`}
-          cx={e.x}
-          cy={e.y}
-          r={e.r}
-          style={{ fill: "var(--color-danger)" }}
-          opacity={0.85}
+          key={`p${i}`}
+          cx={sx(p.at)}
+          cy={sy(p.kg)}
+          r={2}
+          style={{ fill: "var(--color-accent-alt)" }}
         />
       ))}
     </svg>

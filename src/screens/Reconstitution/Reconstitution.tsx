@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { useAppStore } from "../../state/store";
 import {
-  computeRecon,
+  reconstitute,
   mcgToMg,
+  type ReconResult,
   type SyringeType,
 } from "../../lib/recon";
 import { Button, Card, Field, Select, TextInput } from "../../components/Form";
@@ -12,7 +13,7 @@ const SYRINGES: SyringeType[] = ["U-100", "U-50", "U-40"];
 /**
  * Reconstitution calculator (Phase 7, compounded mode). Flag-gated upstream; shows a
  * persistent "calculator only — verify with your provider" notice (Ref §2.3). It
- * computes from the user's own inputs and recommends nothing.
+ * computes from the user's own inputs via the verified core and recommends nothing.
  */
 export function Reconstitution() {
   const setScreen = useAppStore((s) => s.setScreen);
@@ -23,18 +24,22 @@ export function Reconstitution() {
   const [doseUnit, setDoseUnit] = useState<"mg" | "mcg">("mg");
   const [syringe, setSyringe] = useState<SyringeType>("U-100");
 
-  const result = useMemo(() => {
-    const desiredDoseMg =
-      doseUnit === "mcg" ? mcgToMg(Number(dose)) : Number(dose);
-    return computeRecon({
-      vialStrengthMg: Number(vial),
-      bacWaterMl: Number(bac),
-      desiredDoseMg,
-      syringe,
-    });
+  const result = useMemo<ReconResult | null>(() => {
+    const v = Number(vial);
+    const b = Number(bac);
+    const d = Number(dose);
+    if (!(v > 0) || !(b > 0) || !(d > 0)) return null;
+    try {
+      return reconstitute({
+        vialStrengthMg: v,
+        bacWaterMl: b,
+        desiredDoseMg: doseUnit === "mcg" ? mcgToMg(d) : d,
+        syringe,
+      });
+    } catch {
+      return null;
+    }
   }, [vial, bac, dose, doseUnit, syringe]);
-
-  const ready = vial !== "" && bac !== "" && dose !== "";
 
   return (
     <div className="flex flex-col gap-4">
@@ -108,20 +113,18 @@ export function Reconstitution() {
         </div>
       </Card>
 
-      {ready && result.valid ? (
+      {result ? (
         <Card title="Result">
           <ul className="flex flex-col gap-2 text-sm">
             <li className="flex justify-between">
               <span className="text-muted">Draw</span>
               <span className="font-display text-text">
-                {result.unitsDisplay} units ({syringe})
+                {Math.round(result.units * 2) / 2} units ({result.syringe})
               </span>
             </li>
             <li className="flex justify-between">
               <span className="text-muted">Dose volume</span>
-              <span className="text-text">
-                {result.doseVolumeMl.toFixed(2)} mL
-              </span>
+              <span className="text-text">{result.doseVolumeMl.toFixed(2)} mL</span>
             </li>
             <li className="flex justify-between">
               <span className="text-muted">Concentration</span>
@@ -131,25 +134,15 @@ export function Reconstitution() {
             </li>
             <li className="flex justify-between">
               <span className="text-muted">Doses per vial</span>
-              <span className="text-text">
-                {Math.floor(result.dosesPerVial)}
-              </span>
+              <span className="text-text">{Math.floor(result.dosesPerVial)}</span>
             </li>
           </ul>
           {result.exceedsSyringe ? (
             <p className="mt-3 text-sm text-warning">
-              This dose volume exceeds one {syringe} syringe — split or adjust
-              with your provider.
+              This dose volume exceeds one {result.syringe} syringe — split or
+              adjust with your provider.
             </p>
           ) : null}
-        </Card>
-      ) : ready ? (
-        <Card>
-          <ul className="flex flex-col gap-1 text-sm text-danger">
-            {result.errors.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
         </Card>
       ) : null}
 

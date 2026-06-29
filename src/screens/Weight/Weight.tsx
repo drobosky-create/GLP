@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAppStore, nowIso } from "../../state/store";
+import { useAppStore, nowMs } from "../../state/store";
 import {
   Button,
   Card,
@@ -11,11 +11,10 @@ import {
 
 /** Weight + optional body-composition log (MVP §3 item 3). */
 export function Weight() {
-  const weightEntries = useAppStore((s) => s.weightEntries);
+  const weightEntries = useAppStore((s) => s.weights);
   const logWeight = useAppStore((s) => s.logWeight);
-  const deleteWeight = useAppStore((s) => s.deleteWeight);
 
-  const [datetime, setDatetime] = useState(nowIso());
+  const [at, setAt] = useState(nowMs());
   const [weight, setWeight] = useState("");
   const [bodyFat, setBodyFat] = useState("");
   const [waist, setWaist] = useState("");
@@ -26,7 +25,7 @@ export function Weight() {
   const onSubmit = async () => {
     if (!canSubmit) return;
     await logWeight({
-      datetime,
+      at,
       weightKg: weightValue,
       bodyFatPct: bodyFat !== "" ? Number(bodyFat) : undefined,
       waistCm: waist !== "" ? Number(waist) : undefined,
@@ -34,7 +33,7 @@ export function Weight() {
     setWeight("");
     setBodyFat("");
     setWaist("");
-    setDatetime(nowIso());
+    setAt(nowMs());
   };
 
   return (
@@ -76,7 +75,7 @@ export function Weight() {
               />
             </Field>
           </div>
-          <DateTimeField label="When" value={datetime} onChange={setDatetime} />
+          <DateTimeField label="When" value={at} onChange={setAt} />
           <Button onClick={onSubmit} disabled={!canSubmit}>
             Log weight
           </Button>
@@ -99,13 +98,8 @@ export function Weight() {
                     {w.bodyFatPct != null ? ` · ${w.bodyFatPct}% bf` : ""}
                     {w.waistCm != null ? ` · ${w.waistCm} cm waist` : ""}
                   </span>
-                  <span className="text-xs text-muted">
-                    {formatWhen(w.datetime)}
-                  </span>
+                  <span className="text-xs text-muted">{formatWhen(w.at)}</span>
                 </div>
-                <Button variant="ghost" onClick={() => deleteWeight(w.id)}>
-                  Delete
-                </Button>
               </li>
             ))}
           </ul>

@@ -1,113 +1,82 @@
-/**
- * pk.ts — medication-level curve MATH only (model from Reference Sheet §1). Reads
- * compound half-lives from peptides.ts; it owns no catalog data and no UI.
- *
- * This is a RELATIVE-concentration visualization, NOT a plasma measurement: it
- * superimposes single-compartment exponential decay from each of the user's logged
- * doses (Ref §1.2). It must never be used to suggest dose timing or changes, and the
- * model applies no age/weight/sex pseudo-personalization (Ref §1.3). Any compound
- * with verified:false must be rendered "estimated, low-confidence" by the UI (§8.1).
- */
+// pk.ts — Medication-level curve MATH only (Reference Sheet §1). Reads peptides.ts.
+//
+// IMPORTANT FRAMING (PRD §1.3): this produces a RELATIVE, illustrative curve of
+// "estimated amount in system," NOT a clinical plasma measurement. The UI must
+// label it as estimated/educational, and for any compound with verified=false it
+// must additionally show a low-confidence label. This module never advises timing
+// or dose changes — it only visualizes the user's own logged doses.
 
-import type { Compound, Confidence } from "./peptides";
+import { Compound, compoundById } from "./peptides";
 
-const HOUR_MS = 3_600_000;
-const MAX_POINTS = 220;
+export interface DoseEvent {
+  /** hours since an arbitrary t0 (e.g. first dose). Keep all events on one timeline. */
+  atHours: number;
+  /** amount in the compound's doseUnit. Relative units are fine; the curve is relative. */
+  amount: number;
+}
 
-/** Decay constant k = ln(2) / half-life (Ref §1.2), in per-hour units. */
+/** Elimination rate constant k = ln(2) / half-life. */
 export function decayConstant(halfLifeHours: number): number {
   return Math.LN2 / halfLifeHours;
 }
 
-export interface DoseInput {
-  t: number; // injection time (ms epoch)
-  dose: number;
-}
-
-/** Relative level at time t = Σ dose·e^(−k·Δt) over all prior doses (superposition). */
-export function levelAt(doses: DoseInput[], k: number, t: number): number {
-  let sum = 0;
-  for (const d of doses) {
-    if (d.t > t) continue;
-    sum += d.dose * Math.exp(-k * ((t - d.t) / HOUR_MS));
-  }
-  return sum;
-}
-
-export interface CurvePoint {
-  t: number;
-  level: number;
-}
-
-export interface CurveModel {
-  hasData: boolean;
-  points: CurvePoint[];
-  doseTimes: number[];
-  startT: number | null;
-  nowT: number;
-  currentLevel: number;
-  peakLevel: number;
-  steadyStateT: number | null;
-  weeksToSteadyState: number;
-  atSteadyState: boolean;
-  halfLifeHours: number;
-  unitLabel: string;
-  estimated: boolean; // compound.verified === false
-  confidence: Confidence;
+/** Single-dose remaining fraction after `elapsedHours`. */
+export function remainingFraction(elapsedHours: number, halfLifeHours: number): number {
+  if (elapsedHours < 0) return 0;
+  return Math.exp(-decayConstant(halfLifeHours) * elapsedHours);
 }
 
 /**
- * Builds the curve from the user's OWN logged doses only (no fabricated future
- * doses). Steady state ≈ 4–5 half-lives of consistent dosing (Ref §1.2); we use 4.5
- * to surface "stabilizing around week X" relative to the actual start date.
+ * Total relative level at time `atHours`, summing the exponential decay of every
+ * prior dose (superposition). This is what produces the saw-tooth that plateaus
+ * at steady state.
  */
-export function buildCurve(
-  doses: DoseInput[],
-  compound: Compound,
-  now: number,
-): CurveModel {
-  const k = decayConstant(compound.halfLifeHours);
-  const sorted = doses
-    .filter((d) => d.dose > 0 && Number.isFinite(d.t))
-    .sort((a, b) => a.t - b.t);
-  const hasData = sorted.length > 0;
-  const startT = hasData ? sorted[0].t : null;
-
-  const steadyHoursFromStart = 4.5 * compound.halfLifeHours;
-  const steadyStateT =
-    startT != null ? startT + steadyHoursFromStart * HOUR_MS : null;
-  const weeksToSteadyState = Math.max(1, Math.round(steadyHoursFromStart / 24 / 7));
-  const atSteadyState = steadyStateT != null && now >= steadyStateT;
-
-  const points: CurvePoint[] = [];
-  let peakLevel = 0;
-  if (hasData && startT != null) {
-    const span = Math.max(HOUR_MS, now - startT);
-    const step = Math.max(HOUR_MS, span / MAX_POINTS);
-    for (let t = startT; t < now; t += step) {
-      const level = levelAt(sorted, k, t);
-      points.push({ t, level });
-      if (level > peakLevel) peakLevel = level;
+export function levelAtTime(events: DoseEvent[], atHours: number, halfLifeHours: number): number {
+  const k = decayConstant(halfLifeHours);
+  let total = 0;
+  for (const e of events) {
+    if (e.atHours <= atHours) {
+      total += e.amount * Math.exp(-k * (atHours - e.atHours));
     }
-    const levelNow = levelAt(sorted, k, now);
-    points.push({ t: now, level: levelNow });
-    if (levelNow > peakLevel) peakLevel = levelNow;
   }
+  return total;
+}
 
+export interface CurvePoint { tHours: number; level: number; }
+
+/** Sample the curve for charting between startHours and endHours at a fixed step. */
+export function curveSeries(
+  events: DoseEvent[],
+  halfLifeHours: number,
+  startHours: number,
+  endHours: number,
+  stepHours = 6,
+): CurvePoint[] {
+  const out: CurvePoint[] = [];
+  for (let t = startHours; t <= endHours; t += stepHours) {
+    out.push({ tHours: t, level: levelAtTime(events, t, halfLifeHours) });
+  }
+  return out;
+}
+
+/** Hours of consistent dosing to reach ~steady state (≈5 half-lives, ~96.9%). */
+export function hoursToSteadyState(halfLifeHours: number): number {
+  return 5 * halfLifeHours;
+}
+
+/** Convenience: resolve a compound from the catalog and build its curve. */
+export function curveForCompound(
+  compoundId: string,
+  events: DoseEvent[],
+  startHours: number,
+  endHours: number,
+  stepHours = 6,
+): { points: CurvePoint[]; compound: Compound; lowConfidence: boolean } {
+  const compound = compoundById(compoundId);
+  if (!compound) throw new Error(`pk: unknown compound "${compoundId}"`);
   return {
-    hasData,
-    points,
-    doseTimes: sorted.map((d) => d.t),
-    startT,
-    nowT: now,
-    currentLevel: hasData ? levelAt(sorted, k, now) : 0,
-    peakLevel,
-    steadyStateT,
-    weeksToSteadyState,
-    atSteadyState,
-    halfLifeHours: compound.halfLifeHours,
-    unitLabel: compound.doseUnit,
-    estimated: compound.verified === false,
-    confidence: compound.confidence,
+    points: curveSeries(events, compound.halfLifeHours, startHours, endHours, stepHours),
+    compound,
+    lowConfidence: !compound.verified || compound.confidence === "low",
   };
 }

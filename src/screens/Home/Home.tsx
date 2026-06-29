@@ -1,6 +1,8 @@
 import { Logo } from "../../components/Logo";
 import { Button, Card, formatWhen } from "../../components/Form";
 import { useAppStore } from "../../state/store";
+import { compoundById } from "../../lib/peptides";
+import { accessLevel, daysLeftInTrial, isEntitled } from "../../lib/billing";
 
 /**
  * Home — dashboard summarizing the user's OWN logged data and offering quick paths
@@ -9,13 +11,16 @@ import { useAppStore } from "../../state/store";
  */
 export function Home() {
   const setScreen = useAppStore((s) => s.setScreen);
-  const doseEvents = useAppStore((s) => s.doseEvents);
-  const weightEntries = useAppStore((s) => s.weightEntries);
+  const doseEvents = useAppStore((s) => s.doses);
+  const weightEntries = useAppStore((s) => s.weights);
   const sideEffects = useAppStore((s) => s.sideEffects);
-  const premium = useAppStore((s) => s.premium);
-  const trialDaysLeft = useAppStore((s) => s.trialDaysLeft);
+  const entitlement = useAppStore((s) => s.entitlement);
   const compoundedEnabled = useAppStore((s) => s.compoundedEnabled);
   const educationEnabled = useAppStore((s) => s.educationEnabled);
+
+  const premium = isEntitled(entitlement);
+  const trialDaysLeft =
+    accessLevel(entitlement) === "trial" ? daysLeftInTrial(entitlement) : null;
 
   const latestWeight = weightEntries[0];
   const latestDose = doseEvents[0];
@@ -93,8 +98,8 @@ export function Home() {
             <span className="text-muted">Last dose</span>
             <span className="text-text">
               {latestDose
-                ? `${latestDose.dose} ${latestDose.doseUnit} · ${formatWhen(
-                    latestDose.datetime,
+                ? `${compoundById(latestDose.compoundId)?.displayName ?? "Dose"} · ${formatWhen(
+                    latestDose.at,
                   )}`
                 : "—"}
             </span>
@@ -109,7 +114,7 @@ export function Home() {
             <span className="text-muted">Recent side effect</span>
             <span className="text-text">
               {latestEffect
-                ? `${latestEffect.type} (${latestEffect.severity}/10)`
+                ? `${latestEffect.type.replace(/_/g, " ")} (${latestEffect.severity}/3)`
                 : "—"}
             </span>
           </li>

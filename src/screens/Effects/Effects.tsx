@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useAppStore, nowIso } from "../../state/store";
+import { useAppStore, nowMs } from "../../state/store";
+import type { SideEffectType } from "../../types";
 import {
   Button,
   Card,
@@ -9,35 +10,36 @@ import {
   formatWhen,
 } from "../../components/Form";
 
-// Neutral symptom labels (descriptive, not advice). "Other" lets the user name
-// anything not listed.
-const SIDE_EFFECT_TYPES = [
-  "Nausea",
-  "Fatigue",
-  "Constipation",
-  "Diarrhea",
-  "Headache",
-  "Decreased appetite",
-  "Injection-site reaction",
-  "Heartburn",
-  "Dizziness",
-  "Other",
+const TYPES: { value: SideEffectType; label: string }[] = [
+  { value: "nausea", label: "Nausea" },
+  { value: "fatigue", label: "Fatigue" },
+  { value: "constipation", label: "Constipation" },
+  { value: "diarrhea", label: "Diarrhea" },
+  { value: "headache", label: "Headache" },
+  { value: "injection_site", label: "Injection-site reaction" },
+  { value: "appetite_loss", label: "Decreased appetite" },
+  { value: "other", label: "Other" },
 ];
 
-/** Side-effect log (MVP §3 item 4) — type + user-rated severity (0–10). */
+const SEVERITY_LABELS = ["None", "Mild", "Moderate", "Severe"];
+
+function typeLabel(t: SideEffectType): string {
+  return TYPES.find((x) => x.value === t)?.label ?? t;
+}
+
+/** Side-effect log (MVP §3 item 4) — type + severity (0–3 per the core model). */
 export function Effects() {
   const sideEffects = useAppStore((s) => s.sideEffects);
   const logSideEffect = useAppStore((s) => s.logSideEffect);
-  const deleteSideEffect = useAppStore((s) => s.deleteSideEffect);
 
-  const [type, setType] = useState(SIDE_EFFECT_TYPES[0]);
-  const [severity, setSeverity] = useState(3);
-  const [datetime, setDatetime] = useState(nowIso());
+  const [type, setType] = useState<SideEffectType>("nausea");
+  const [severity, setSeverity] = useState(1);
+  const [at, setAt] = useState(nowMs());
 
   const onSubmit = async () => {
-    await logSideEffect({ datetime, type, severity });
-    setSeverity(3);
-    setDatetime(nowIso());
+    await logSideEffect({ at, type, severity });
+    setSeverity(1);
+    setAt(nowMs());
   };
 
   return (
@@ -45,20 +47,23 @@ export function Effects() {
       <Card title="Log a side effect">
         <div className="flex flex-col gap-3">
           <Field label="Type">
-            <Select value={type} onChange={(e) => setType(e.target.value)}>
-              {SIDE_EFFECT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+            <Select
+              value={type}
+              onChange={(e) => setType(e.target.value as SideEffectType)}
+            >
+              {TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
                 </option>
               ))}
             </Select>
           </Field>
 
-          <Field label={`Severity: ${severity} / 10`}>
+          <Field label={`Severity: ${SEVERITY_LABELS[severity]} (${severity}/3)`}>
             <input
               type="range"
               min={0}
-              max={10}
+              max={3}
               step={1}
               value={severity}
               onChange={(e) => setSeverity(Number(e.target.value))}
@@ -66,7 +71,7 @@ export function Effects() {
             />
           </Field>
 
-          <DateTimeField label="When" value={datetime} onChange={setDatetime} />
+          <DateTimeField label="When" value={at} onChange={setAt} />
           <Button onClick={onSubmit}>Log side effect</Button>
         </div>
       </Card>
@@ -83,15 +88,11 @@ export function Effects() {
               >
                 <div className="flex flex-col">
                   <span className="text-sm text-text">
-                    {e.type} · severity {e.severity}/10
+                    {typeLabel(e.type)} · {SEVERITY_LABELS[e.severity] ?? e.severity}{" "}
+                    (severity {e.severity}/3)
                   </span>
-                  <span className="text-xs text-muted">
-                    {formatWhen(e.datetime)}
-                  </span>
+                  <span className="text-xs text-muted">{formatWhen(e.at)}</span>
                 </div>
-                <Button variant="ghost" onClick={() => deleteSideEffect(e.id)}>
-                  Delete
-                </Button>
               </li>
             ))}
           </ul>

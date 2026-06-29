@@ -24,7 +24,7 @@ export const SITE_REGIONS = ["Upper arm", "Abdomen", "Thigh"] as const;
 
 export interface SiteUsage {
   count: number;
-  lastUsed?: string; // ISO datetime
+  lastUsed?: number; // epoch ms
 }
 
 /** Per-site usage derived from the user's own logged doses. */
@@ -36,7 +36,7 @@ export function siteUsage(doses: DoseEvent[]): Record<string, SiteUsage> {
     if (!id || !usage[id]) continue;
     const u = usage[id];
     u.count += 1;
-    if (!u.lastUsed || dose.datetime > u.lastUsed) u.lastUsed = dose.datetime;
+    if (u.lastUsed == null || dose.at > u.lastUsed) u.lastUsed = dose.at;
   }
   return usage;
 }
@@ -53,7 +53,7 @@ export function suggestNextSite(doses: DoseEvent[]): string | undefined {
   for (const site of INJECTION_SITES) {
     const u = usage[site.id];
     // Never-used sorts first (key 0); otherwise key on last-used timestamp.
-    const key = u.count === 0 ? 0 : u.lastUsed ? Date.parse(u.lastUsed) : 1;
+    const key = u.count === 0 ? 0 : (u.lastUsed ?? 1);
     if (key < bestKey) {
       bestKey = key;
       best = site;

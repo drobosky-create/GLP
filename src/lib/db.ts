@@ -1,160 +1,87 @@
-/**
- * db.ts — storage layer. The ONLY place that touches persistent storage (PRD §7.1,
- * §12). Screens never import this; they go through the single store, which calls
- * these functions. Local-first (§5): data lives on-device, reads/writes are local
- * so the app works offline and feels instant.
- *
- * Web target uses IndexedDB (the spec's named web store, §7). The public surface
- * below is storage-agnostic so a Capacitor SQLite plugin can replace the internals
- * on native later without touching the store or any screen.
- */
+// db.ts — the ONLY module that touches storage (PRD §7.1). Screens never persist
+// directly; they call this. Local-first: data lives on the device.
+//
+// Architecture: a Storage interface + an in-memory implementation (used in tests
+// and as a fallback). In the app, Claude Code provides ONE native-backed
+// implementation of the same interface:
+//   - native (iOS/Android): Capacitor SQLite or Preferences
+//   - web build: IndexedDB
+// Because everything depends on the interface, swapping the backing store never
+// touches screens or other lib modules.
 
-import type {
-  BillingEvent,
-  DoseEvent,
-  Entitlement,
-  IntakeEntry,
-  Medication,
-  Reminder,
-  SideEffectEntry,
-  Stack,
-  StrengthCheckin,
-  Vial,
-  WeightEntry,
+import {
+  AppData, DoseEvent, WeightEntry, SideEffectEntry,
+  IntakeEntry, StrengthCheckin, Vial, Medication, Entitlement,
 } from "../types";
 
-const DB_NAME = "glp1-companion";
-const DB_VERSION = 6;
-
-// Object stores owned by this layer. Later phases append to this list and bump
-// DB_VERSION; onupgradeneeded creates any missing store idempotently.
-const STORES = [
-  "medications",
-  "doseEvents",
-  "weightEntries",
-  "sideEffectEntries",
-  "reminders",
-  "entitlement",
-  "billingEvents",
-  "intakeEntries",
-  "strengthCheckins",
-  "vials",
-  "stacks",
-] as const;
-type StoreName = (typeof STORES)[number];
-
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const database = req.result;
-      for (const name of STORES) {
-        if (!database.objectStoreNames.contains(name)) {
-          database.createObjectStore(name, { keyPath: "id" });
-        }
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-  return dbPromise;
+export interface Storage {
+  load(): Promise<AppData>;
+  save(data: AppData): Promise<void>;
 }
 
-function run<T>(
-  store: StoreName,
-  mode: IDBTransactionMode,
-  op: (s: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
-  return openDb().then(
-    (database) =>
-      new Promise<T>((resolve, reject) => {
-        const transaction = database.transaction(store, mode);
-        const request = op(transaction.objectStore(store));
-        transaction.oncomplete = () => resolve(request.result);
-        transaction.onerror = () => reject(transaction.error);
-        transaction.onabort = () => reject(transaction.error);
-      }),
-  );
-}
+export const emptyData = (): AppData => ({
+  medications: [],
+  doses: [],
+  weights: [],
+  sideEffects: [],
+  intake: [],
+  strength: [],
+  vials: [],
+  entitlement: { tier: "free" },
+});
 
-function getAll<T>(store: StoreName): Promise<T[]> {
-  return run<T[]>(store, "readonly", (s) => s.getAll() as IDBRequest<T[]>);
-}
+// Simple id helper (no external dep).
+export const newId = (): string =>
+  Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-function put<T>(store: StoreName, value: T): Promise<void> {
-  return run(store, "readwrite", (s) =>
-    s.put(value as unknown as object),
-  ).then(() => undefined);
-}
-
-function remove(store: StoreName, id: string): Promise<void> {
-  return run(store, "readwrite", (s) => s.delete(id)).then(() => undefined);
+/** In-memory Storage. Real builds replace this with a native/IndexedDB impl. */
+export class MemoryStorage implements Storage {
+  private data: AppData;
+  constructor(seed?: AppData) { this.data = seed ?? emptyData(); }
+  async load() { return structuredClone(this.data); }
+  async save(data: AppData) { this.data = structuredClone(data); }
 }
 
 /**
- * Typed, namespaced storage API. One entry per entity; each is the single way to
- * read/write that collection. Returns plain typed records — no storage details leak.
+ * Repository: the app-facing API. Holds the loaded AppData in memory, mutates it,
+ * and persists through whatever Storage was injected. Keeps mutation logic in one
+ * place so screens stay declarative.
  */
-export const db = {
-  medications: {
-    all: () => getAll<Medication>("medications"),
-    save: (m: Medication) => put("medications", m),
-    remove: (id: string) => remove("medications", id),
-  },
-  doseEvents: {
-    all: () => getAll<DoseEvent>("doseEvents"),
-    save: (d: DoseEvent) => put("doseEvents", d),
-    remove: (id: string) => remove("doseEvents", id),
-  },
-  weightEntries: {
-    all: () => getAll<WeightEntry>("weightEntries"),
-    save: (w: WeightEntry) => put("weightEntries", w),
-    remove: (id: string) => remove("weightEntries", id),
-  },
-  sideEffects: {
-    all: () => getAll<SideEffectEntry>("sideEffectEntries"),
-    save: (s: SideEffectEntry) => put("sideEffectEntries", s),
-    remove: (id: string) => remove("sideEffectEntries", id),
-  },
-  reminders: {
-    all: () => getAll<Reminder>("reminders"),
-    save: (r: Reminder) => put("reminders", r),
-    remove: (id: string) => remove("reminders", id),
-  },
-  // Single-record store keyed by a fixed id; the extra id is storage-internal.
-  entitlement: {
-    get: async (): Promise<Entitlement | undefined> => {
-      const all = await getAll<Entitlement & { id: string }>("entitlement");
-      return all[0];
-    },
-    save: (e: Entitlement) => put("entitlement", { id: "current", ...e }),
-    clear: () => remove("entitlement", "current"),
-  },
-  billingEvents: {
-    all: () => getAll<BillingEvent>("billingEvents"),
-    save: (ev: BillingEvent) => put("billingEvents", ev),
-  },
-  intakeEntries: {
-    all: () => getAll<IntakeEntry>("intakeEntries"),
-    save: (e: IntakeEntry) => put("intakeEntries", e),
-    remove: (id: string) => remove("intakeEntries", id),
-  },
-  strengthCheckins: {
-    all: () => getAll<StrengthCheckin>("strengthCheckins"),
-    save: (e: StrengthCheckin) => put("strengthCheckins", e),
-    remove: (id: string) => remove("strengthCheckins", id),
-  },
-  vials: {
-    all: () => getAll<Vial>("vials"),
-    save: (v: Vial) => put("vials", v),
-    remove: (id: string) => remove("vials", id),
-  },
-  stacks: {
-    all: () => getAll<Stack>("stacks"),
-    save: (s: Stack) => put("stacks", s),
-    remove: (id: string) => remove("stacks", id),
-  },
-};
+export class Repo {
+  private data: AppData = emptyData();
+  constructor(private storage: Storage) {}
+
+  async init(): Promise<void> { this.data = await this.storage.load(); }
+  snapshot(): AppData { return structuredClone(this.data); }
+  private async persist() { await this.storage.save(this.data); }
+
+  async addDose(d: Omit<DoseEvent, "id">): Promise<DoseEvent> {
+    const rec = { ...d, id: newId() }; this.data.doses.push(rec); await this.persist(); return rec;
+  }
+  async addWeight(w: Omit<WeightEntry, "id">): Promise<WeightEntry> {
+    const rec = { ...w, id: newId() }; this.data.weights.push(rec); await this.persist(); return rec;
+  }
+  async addSideEffect(s: Omit<SideEffectEntry, "id">): Promise<SideEffectEntry> {
+    const rec = { ...s, id: newId() }; this.data.sideEffects.push(rec); await this.persist(); return rec;
+  }
+  async addIntake(i: Omit<IntakeEntry, "id">): Promise<IntakeEntry> {
+    const rec = { ...i, id: newId() }; this.data.intake.push(rec); await this.persist(); return rec;
+  }
+  async addStrength(s: Omit<StrengthCheckin, "id">): Promise<StrengthCheckin> {
+    const rec = { ...s, id: newId() }; this.data.strength.push(rec); await this.persist(); return rec;
+  }
+  async addMedication(m: Omit<Medication, "id">): Promise<Medication> {
+    const rec = { ...m, id: newId() }; this.data.medications.push(rec); await this.persist(); return rec;
+  }
+  async addVial(v: Omit<Vial, "id">): Promise<Vial> {
+    const rec = { ...v, id: newId() }; this.data.vials.push(rec); await this.persist(); return rec;
+  }
+  async setEntitlement(e: Entitlement): Promise<void> {
+    this.data.entitlement = e; await this.persist();
+  }
+
+  doses() { return [...this.data.doses].sort((a, b) => a.at - b.at); }
+  weights() { return [...this.data.weights].sort((a, b) => a.at - b.at); }
+  sideEffects() { return [...this.data.sideEffects].sort((a, b) => a.at - b.at); }
+  entitlement() { return this.data.entitlement; }
+}

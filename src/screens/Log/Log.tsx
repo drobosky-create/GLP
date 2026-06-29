@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { useAppStore, nowIso, type LogDoseInput } from "../../state/store";
-import { COMPOUNDS } from "../../lib/peptides";
+import { useAppStore, nowMs } from "../../state/store";
+import { compoundsForMode, compoundById } from "../../lib/peptides";
 import {
   Button,
   Card,
@@ -12,8 +12,6 @@ import {
 } from "../../components/Form";
 import { INJECTION_SITES, suggestNextSite } from "../InjectionSite/sites";
 
-const DOSE_UNITS: LogDoseInput["doseUnit"][] = ["mg", "mcg", "units"];
-
 function siteLabel(siteId?: string): string {
   if (!siteId) return "No site";
   const site = INJECTION_SITES.find((s) => s.id === siteId);
@@ -23,24 +21,19 @@ function siteLabel(siteId?: string): string {
 /** Dose log (MVP §3 item 1) — log a dose against a catalog compound + site. */
 export function Log() {
   const mode = useAppStore((s) => s.mode);
-  const doseEvents = useAppStore((s) => s.doseEvents);
-  const medications = useAppStore((s) => s.medications);
+  const doseEvents = useAppStore((s) => s.doses);
   const logDose = useAppStore((s) => s.logDose);
-  const deleteDose = useAppStore((s) => s.deleteDose);
 
   const compounds = useMemo(
-    () =>
-      COMPOUNDS.filter((c) => mode === "compounded" || c.mode !== "compounded"),
+    () => compoundsForMode(mode ?? "prescribed"),
     [mode],
   );
 
   const [compoundId, setCompoundId] = useState(compounds[0]?.id ?? "");
   const selected = compounds.find((c) => c.id === compoundId) ?? compounds[0];
+  const unit = selected?.doseUnit ?? "mg";
   const [dose, setDose] = useState("");
-  const [doseUnit, setDoseUnit] = useState<LogDoseInput["doseUnit"]>(
-    selected?.doseUnit ?? "mg",
-  );
-  const [datetime, setDatetime] = useState(nowIso());
+  const [at, setAt] = useState(nowMs());
   const suggested = suggestNextSite(doseEvents);
   const [injectionSite, setInjectionSite] = useState<string>(suggested ?? "");
 
@@ -49,20 +42,23 @@ export function Log() {
   const canSubmit = compoundId !== "" && dose !== "" && doseValue > 0;
 
   const onSubmit = async () => {
-    if (!canSubmit) return;
+    if (!canSubmit || !selected) return;
+    const doseMg = selected.doseUnit === "mcg" ? doseValue / 1000 : doseValue;
     await logDose({
       compoundId,
-      dose: doseValue,
-      doseUnit,
-      datetime,
+      doseMg,
+      at,
       injectionSite: isOral ? undefined : injectionSite || undefined,
     });
     setDose("");
-    setDatetime(nowIso());
+    setAt(nowMs());
   };
 
-  const nameForDose = (medicationId: string): string =>
-    medications.find((m) => m.id === medicationId)?.name ?? "Dose";
+  const displayDose = (doseMg: number, compoundId: string): string => {
+    const c = compoundById(compoundId);
+    if (c?.doseUnit === "mcg") return `${Math.round(doseMg * 1000)} mcg`;
+    return `${doseMg} mg`;
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -71,11 +67,7 @@ export function Log() {
           <Field label="Medication">
             <Select
               value={compoundId}
-              onChange={(e) => {
-                setCompoundId(e.target.value);
-                const c = compounds.find((x) => x.id === e.target.value);
-                if (c) setDoseUnit(c.doseUnit);
-              }}
+              onChange={(e) => setCompoundId(e.target.value)}
             >
               {compounds.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -86,35 +78,19 @@ export function Log() {
             </Select>
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Dose">
-              <TextInput
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="any"
-                value={dose}
-                onChange={(e) => setDose(e.target.value)}
-                placeholder="0"
-              />
-            </Field>
-            <Field label="Unit">
-              <Select
-                value={doseUnit}
-                onChange={(e) =>
-                  setDoseUnit(e.target.value as LogDoseInput["doseUnit"])
-                }
-              >
-                {DOSE_UNITS.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
+          <Field label={`Dose (${unit})`}>
+            <TextInput
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              value={dose}
+              onChange={(e) => setDose(e.target.value)}
+              placeholder="0"
+            />
+          </Field>
 
-          <DateTimeField label="When" value={datetime} onChange={setDatetime} />
+          <DateTimeField label="When" value={at} onChange={setAt} />
 
           {!isOral ? (
             <Field label="Injection site">
@@ -151,15 +127,13 @@ export function Log() {
               >
                 <div className="flex flex-col">
                   <span className="text-sm text-text">
-                    {nameForDose(d.medicationId)} · {d.dose} {d.doseUnit}
+                    {compoundById(d.compoundId)?.displayName ?? d.compoundId} ·{" "}
+                    {displayDose(d.doseMg, d.compoundId)}
                   </span>
                   <span className="text-xs text-muted">
-                    {formatWhen(d.datetime)} · {siteLabel(d.injectionSite)}
+                    {formatWhen(d.at)} · {siteLabel(d.injectionSite)}
                   </span>
                 </div>
-                <Button variant="ghost" onClick={() => deleteDose(d.id)}>
-                  Delete
-                </Button>
               </li>
             ))}
           </ul>

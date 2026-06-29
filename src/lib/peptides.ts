@@ -1,35 +1,26 @@
-/**
- * peptides.ts — the peptide CATALOG, single source of truth for compounds (PRD §8.1).
- *
- * This is DATA, not logic. Adding a compound = adding one object to COMPOUNDS; it
- * never touches pk.ts or any screen. The schema is FROZEN so the catalog grows by
- * data entry, not refactor.
- *
- * Neutrality (§1.5): factual reference fields only — half-life, route, storage.
- * There is deliberately NO typicalDose / recommended-dose field. The user always
- * enters their own dose; the app never ships a dosing recommendation.
- *
- * Clinical values come from the Reference Sheet (§1). Only the first three carry
- * session-verified half-lives; the rest are scaffolded with verified:false and MUST
- * be checked before their §1 curve (pk.ts) is trusted — render those with a visible
- * "estimated, low-confidence" label.
- */
+// peptides.ts — the peptide CATALOG. Single source of truth for compounds (PRD §8.1).
+//
+// This file is DATA, not logic. Adding a compound = adding one object below.
+// It must never import from pk.ts or any screen. pk.ts reads THIS.
+//
+// NEUTRALITY (PRD §1.5): factual reference fields only. There is intentionally
+// NO dose/recommended-dose field — the user always enters their own dose.
 
 export type Confidence = "high" | "medium" | "low";
 
 export interface Compound {
-  id: string; // stable slug, e.g. "semaglutide"
-  displayName: string; // "Semaglutide"
-  brandNames?: string[]; // ["Ozempic", "Wegovy"]
-  classLabel: string; // "GLP-1" | "GLP-1/GIP" | "GH secretagogue" | ...
+  id: string;             // stable slug, e.g. "semaglutide"
+  displayName: string;
+  brandNames?: string[];
+  classLabel: string;     // "GLP-1" | "GLP-1/GIP" | ...
   mode: "prescribed" | "compounded" | "both";
   route: "subcutaneous" | "oral" | "other";
-  halfLifeHours: number; // drives the §1 curve math in pk.ts
+  halfLifeHours: number;  // drives the curve math in pk.ts
   doseUnit: "mg" | "mcg" | "units";
-  storage?: string; // short, factual: "Refrigerate 2–8°C"
-  source: string; // provenance of halfLifeHours
-  confidence: Confidence; // how solid that number is
-  verified: boolean; // false = needs [VERIFY] before relying on the curve
+  storage?: string;
+  source: string;         // provenance of halfLifeHours
+  confidence: Confidence;
+  verified: boolean;      // false => curve must render with a low-confidence label
   notes?: string;
 }
 
@@ -41,13 +32,13 @@ export const COMPOUNDS: Compound[] = [
     classLabel: "GLP-1",
     mode: "both",
     route: "subcutaneous",
-    halfLifeHours: 168,
+    halfLifeHours: 168, // ~7 days
     doseUnit: "mg",
+    storage: "Refrigerate 2–8°C; protect from light",
     source: "Reference Sheet §1 (peer-reviewed)",
     confidence: "high",
     verified: true,
   },
-
   {
     id: "tirzepatide",
     displayName: "Tirzepatide",
@@ -55,27 +46,27 @@ export const COMPOUNDS: Compound[] = [
     classLabel: "GLP-1/GIP",
     mode: "both",
     route: "subcutaneous",
-    halfLifeHours: 120,
+    halfLifeHours: 120, // ~5 days
     doseUnit: "mg",
-    source: "Reference Sheet §1 (peer-reviewed/PMC)",
+    storage: "Refrigerate 2–8°C",
+    source: "Reference Sheet §1 (peer-reviewed / PMC)",
     confidence: "high",
     verified: true,
   },
-
   {
     id: "retatrutide",
     displayName: "Retatrutide",
     classLabel: "GLP-1/GIP/glucagon",
     mode: "compounded",
     route: "subcutaneous",
-    halfLifeHours: 144,
+    halfLifeHours: 144, // ~6 days
     doseUnit: "mg",
     source: "Reference Sheet §1 (trial; investigational)",
     confidence: "medium",
     verified: true,
   },
 
-  // --- scaffold: verify halfLifeHours before exposing the curve ---
+  // --- scaffold: verify halfLifeHours before trusting the curve ---
   {
     id: "semaglutide-oral",
     displayName: "Semaglutide (oral)",
@@ -83,13 +74,12 @@ export const COMPOUNDS: Compound[] = [
     classLabel: "GLP-1",
     mode: "prescribed",
     route: "oral",
-    halfLifeHours: 168,
+    halfLifeHours: 168, // same molecule; confirm route effects
     doseUnit: "mg",
     source: "[VERIFY] same molecule, oral route",
     confidence: "medium",
     verified: false,
   },
-
   {
     id: "liraglutide",
     displayName: "Liraglutide",
@@ -104,109 +94,20 @@ export const COMPOUNDS: Compound[] = [
     verified: false,
   },
 
-  // --- research peptides (PRD §8.1 "Growing it") — compounded only, almost all
-  // community-sourced. halfLifeHours are [VERIFY] placeholders, confidence "low",
-  // verified:false, so the §1 curve renders "estimated, low-confidence" for them.
-  // Factual reference fields only; no typicalDose (neutrality §1.5). These surface
-  // only in compounded mode, which is itself flag-gated pending legal review (§9).
-  {
-    id: "bpc-157",
-    displayName: "BPC-157",
-    classLabel: "Healing peptide",
-    mode: "compounded",
-    route: "subcutaneous",
-    halfLifeHours: 4,
-    doseUnit: "mcg",
-    storage: "Refrigerate 2–8°C after reconstitution",
-    source: "[VERIFY] community-reported; not clinically established",
-    confidence: "low",
-    verified: false,
-  },
-  {
-    id: "tb-500",
-    displayName: "TB-500",
-    brandNames: ["Thymosin β4 fragment"],
-    classLabel: "Healing peptide",
-    mode: "compounded",
-    route: "subcutaneous",
-    halfLifeHours: 2,
-    doseUnit: "mcg",
-    storage: "Refrigerate 2–8°C after reconstitution",
-    source: "[VERIFY] community-reported; not clinically established",
-    confidence: "low",
-    verified: false,
-  },
-  {
-    id: "ipamorelin",
-    displayName: "Ipamorelin",
-    classLabel: "GH secretagogue",
-    mode: "compounded",
-    route: "subcutaneous",
-    halfLifeHours: 2,
-    doseUnit: "mcg",
-    storage: "Refrigerate 2–8°C after reconstitution",
-    source: "[VERIFY] community-reported",
-    confidence: "low",
-    verified: false,
-  },
-  {
-    id: "cjc-1295",
-    displayName: "CJC-1295 (no DAC)",
-    brandNames: ["Mod GRF 1-29"],
-    classLabel: "GH secretagogue",
-    mode: "compounded",
-    route: "subcutaneous",
-    halfLifeHours: 0.5,
-    doseUnit: "mcg",
-    storage: "Refrigerate 2–8°C after reconstitution",
-    source: "[VERIFY] community-reported",
-    confidence: "low",
-    verified: false,
-  },
-  {
-    id: "cjc-1295-dac",
-    displayName: "CJC-1295 (with DAC)",
-    classLabel: "GH secretagogue",
-    mode: "compounded",
-    route: "subcutaneous",
-    halfLifeHours: 144,
-    doseUnit: "mcg",
-    storage: "Refrigerate 2–8°C after reconstitution",
-    source: "[VERIFY] community-reported; DAC extends half-life",
-    confidence: "low",
-    verified: false,
-  },
-  {
-    id: "tesamorelin",
-    displayName: "Tesamorelin",
-    brandNames: ["Egrifta"],
-    classLabel: "GHRH analog",
-    mode: "compounded",
-    route: "subcutaneous",
-    halfLifeHours: 0.5,
-    doseUnit: "mg",
-    storage: "Refrigerate 2–8°C after reconstitution",
-    source: "[VERIFY] approved elsewhere; PK not session-verified",
-    confidence: "low",
-    verified: false,
-  },
-  {
-    id: "ghk-cu",
-    displayName: "GHK-Cu",
-    brandNames: ["Copper tripeptide-1"],
-    classLabel: "Copper peptide",
-    mode: "compounded",
-    route: "other",
-    halfLifeHours: 1,
-    doseUnit: "mcg",
-    storage: "Store per preparation guidance",
-    source: "[VERIFY] community-reported",
-    confidence: "low",
-    verified: false,
-  },
+  // --- research peptides (PRD §8.1 "Growing it") — compounded only, community-
+  // sourced. halfLifeHours are [VERIFY] placeholders; verified:false => the curve
+  // renders "estimated, low-confidence". Data only; no logic branches on these.
+  { id: "bpc-157", displayName: "BPC-157", classLabel: "Healing peptide", mode: "compounded", route: "subcutaneous", halfLifeHours: 4, doseUnit: "mcg", storage: "Refrigerate 2–8°C after reconstitution", source: "[VERIFY] community-reported; not clinically established", confidence: "low", verified: false },
+  { id: "tb-500", displayName: "TB-500", brandNames: ["Thymosin β4 fragment"], classLabel: "Healing peptide", mode: "compounded", route: "subcutaneous", halfLifeHours: 2, doseUnit: "mcg", storage: "Refrigerate 2–8°C after reconstitution", source: "[VERIFY] community-reported; not clinically established", confidence: "low", verified: false },
+  { id: "ipamorelin", displayName: "Ipamorelin", classLabel: "GH secretagogue", mode: "compounded", route: "subcutaneous", halfLifeHours: 2, doseUnit: "mcg", storage: "Refrigerate 2–8°C after reconstitution", source: "[VERIFY] community-reported", confidence: "low", verified: false },
+  { id: "cjc-1295", displayName: "CJC-1295 (no DAC)", brandNames: ["Mod GRF 1-29"], classLabel: "GH secretagogue", mode: "compounded", route: "subcutaneous", halfLifeHours: 0.5, doseUnit: "mcg", storage: "Refrigerate 2–8°C after reconstitution", source: "[VERIFY] community-reported", confidence: "low", verified: false },
+  { id: "cjc-1295-dac", displayName: "CJC-1295 (with DAC)", classLabel: "GH secretagogue", mode: "compounded", route: "subcutaneous", halfLifeHours: 144, doseUnit: "mcg", storage: "Refrigerate 2–8°C after reconstitution", source: "[VERIFY] community-reported; DAC extends half-life", confidence: "low", verified: false },
+  { id: "tesamorelin", displayName: "Tesamorelin", brandNames: ["Egrifta"], classLabel: "GHRH analog", mode: "compounded", route: "subcutaneous", halfLifeHours: 0.5, doseUnit: "mg", storage: "Refrigerate 2–8°C after reconstitution", source: "[VERIFY] approved elsewhere; PK not session-verified", confidence: "low", verified: false },
+  { id: "ghk-cu", displayName: "GHK-Cu", brandNames: ["Copper tripeptide-1"], classLabel: "Copper peptide", mode: "compounded", route: "other", halfLifeHours: 1, doseUnit: "mcg", storage: "Store per preparation guidance", source: "[VERIFY] community-reported", confidence: "low", verified: false },
 ];
 
-/** Convenience lookup by stable id. */
-export function getCompound(id: string): Compound | undefined {
-  return COMPOUNDS.find((c) => c.id === id);
-}
+export const compoundById = (id: string): Compound | undefined =>
+  COMPOUNDS.find((c) => c.id === id);
+
+export const compoundsForMode = (mode: "prescribed" | "compounded"): Compound[] =>
+  COMPOUNDS.filter((c) => c.mode === mode || c.mode === "both");

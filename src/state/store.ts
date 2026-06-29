@@ -1,39 +1,55 @@
 import { create } from "zustand";
 import type {
-  AppMode,
   DoseEvent,
   Entitlement,
   IntakeEntry,
-  Medication,
-  Reminder,
   SideEffectEntry,
-  Stack,
   StrengthCheckin,
   Vial,
   WeightEntry,
 } from "../types";
-import { db } from "../lib/db";
-import { getCompound } from "../lib/peptides";
-import { scheduleReminder } from "../lib/notify";
+import { Repo } from "../lib/db";
+import { IndexedStorage } from "./indexedStorage";
 import {
-  PLANS,
-  captureBillingEvent,
-  isPremium as computeIsPremium,
-  openCheckout as billingOpenCheckout,
-  purchaseViaStore as billingPurchaseViaStore,
-  restorePurchases as billingRestore,
+  applyPurchase,
   startTrial as makeTrial,
-  trialDaysLeft as computeTrialDaysLeft,
-  type BillingResult,
-  type Plan,
+  type PurchaseResult,
 } from "../lib/billing";
+import type { PurchaseChannel } from "../types";
+import { scheduleReminder, type Reminder } from "../lib/notify";
 
-// Re-exported so screens can type plans without importing the billing module
-// directly (PRD §7.1: screens never touch billing).
-export type { Plan, BillingResult };
+/** The one Repo instance, backed by IndexedDB (Core Integration Guide). */
+const repo = new Repo(new IndexedStorage());
 
-// Neutral defaults — both off until the user opts in. Copy reminds the user to LOG,
-// never to take a medication (§1.5). Dose = weekly (GLP-1 cadence); weigh-in = daily.
+export const nowMs = (): number => Date.now();
+
+export type AppMode = "prescribed" | "compounded";
+
+export type Screen =
+  | "home"
+  | "dose"
+  | "weight"
+  | "effects"
+  | "sites"
+  | "report"
+  | "muscle"
+  | "curve"
+  | "reminders"
+  | "paywall"
+  | "recon"
+  | "vials"
+  | "library"
+  | "stacks"
+  | "education";
+
+/** A user-defined stack — app-layer, not part of the clinical core (kept in prefs). */
+export interface Stack {
+  id: string;
+  name: string;
+  compoundIds: string[];
+  createdAt: number;
+}
+
 const DEFAULT_REMINDERS: Reminder[] = [
   {
     id: "dose",
@@ -56,399 +72,211 @@ const DEFAULT_REMINDERS: Reminder[] = [
   },
 ];
 
-/**
- * The single app store (PRD §7.1, §12) — the one source of UI state. Screens read
- * from here and call these actions; the actions are the orchestrators that persist
- * through db.ts (the only DB owner) and then update in-memory state. Screens never
- * touch db.ts directly.
- */
+// App-layer prefs that aren't part of the persisted clinical core (AppData).
+interface Prefs {
+  mode: AppMode | null;
+  reminders: Reminder[];
+  stacks: Stack[];
+}
+const PREFS_KEY = "tally.prefs";
 
-export type Screen =
-  | "home"
-  | "dose"
-  | "weight"
-  | "effects"
-  | "sites"
-  | "report"
-  | "muscle"
-  | "curve"
-  | "reminders"
-  | "paywall"
-  | "recon"
-  | "vials"
-  | "library"
-  | "stacks"
-  | "education";
-
-const newId = (): string => crypto.randomUUID();
-const nowIso = (): string => new Date().toISOString();
-
-const byNewest = (a: { datetime: string }, b: { datetime: string }): number =>
-  b.datetime.localeCompare(a.datetime);
-
-export interface LogDoseInput {
-  compoundId: string;
-  dose: number;
-  doseUnit: DoseEvent["doseUnit"];
-  datetime: string;
-  injectionSite?: string;
+function loadPrefs(): Prefs {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<Prefs>;
+      return {
+        mode: p.mode ?? null,
+        reminders: p.reminders?.length ? p.reminders : DEFAULT_REMINDERS,
+        stacks: p.stacks ?? [],
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { mode: null, reminders: DEFAULT_REMINDERS, stacks: [] };
 }
 
-export interface LogWeightInput {
-  datetime: string;
-  weightKg: number;
-  bodyFatPct?: number;
-  waistCm?: number;
+function savePrefs(p: Prefs): void {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch {
+    /* ignore */
+  }
 }
 
-export interface LogSideEffectInput {
-  datetime: string;
-  type: string;
-  severity: number;
-}
+const newLocalId = (): string =>
+  Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-export interface LogIntakeInput {
-  datetime: string;
-  proteinG?: number;
-  fiberG?: number;
-  waterMl?: number;
-}
-
-export interface LogStrengthInput {
-  datetime: string;
-  metric: string;
-  value: number;
-}
-
-export interface AddVialInput {
-  compoundId: string;
-  strengthMg: number;
-  bacWaterMl: number;
-  reconDate: string;
-  discardAfter: string;
-}
-
-// Compounded mode (PRD §2) is feature-flagged OFF by default — it ships only after
-// the legal-review checkpoint (§9). Enable per-build with VITE_COMPOUNDED_MODE=true.
 const COMPOUNDED_ENABLED =
   (import.meta.env.VITE_COMPOUNDED_MODE as string) === "true";
-
-// Education/Learn surface has its OWN flag so it can ship independently once its
-// content clears clinical + legal review (research-peptide articles additionally
-// require compounded mode). Off by default.
 const EDUCATION_ENABLED =
   (import.meta.env.VITE_EDUCATION_ENABLED as string) === "true";
 
+const byNewest = (a: { at: number }, b: { at: number }): number => b.at - a.at;
+
 interface AppState {
-  // Onboarding mode (§2) — null until chosen.
   mode: AppMode | null;
   setMode: (mode: AppMode) => void;
 
-  // Lightweight in-app navigation (no router dependency); §5 keeps every log
-  // screen reachable without a restart.
   screen: Screen;
   setScreen: (screen: Screen) => void;
 
-  // Local-first data, hydrated from db.ts on launch.
   hydrated: boolean;
-  medications: Medication[];
-  doseEvents: DoseEvent[];
-  weightEntries: WeightEntry[];
-  sideEffects: SideEffectEntry[];
-  intakeEntries: IntakeEntry[];
-  strengthCheckins: StrengthCheckin[];
-  vials: Vial[];
-  stacks: Stack[];
-  reminders: Reminder[];
 
-  // Compounded-mode feature flag (§2; gated on legal review, §9).
+  // Mirror of the Repo snapshot (display order: newest first).
+  doses: DoseEvent[];
+  weights: WeightEntry[];
+  sideEffects: SideEffectEntry[];
+  intake: IntakeEntry[];
+  strength: StrengthCheckin[];
+  vials: Vial[];
+  entitlement: Entitlement;
+
+  reminders: Reminder[];
+  stacks: Stack[];
+
   compoundedEnabled: boolean;
-  // Education/Learn flag + the article a deep-link wants opened (null = list view).
   educationEnabled: boolean;
   educationArticleId: string | null;
   setEducationArticle: (id: string | null) => void;
 
-  // Entitlement (§6). `premium` / `trialDaysLeft` are derived snapshots kept in
-  // sync via recomputeEntitlement so screens read them reactively without touching
-  // the billing module.
-  entitlement: Entitlement | null;
-  premium: boolean;
-  trialDaysLeft: number | null;
-  plans: Plan[];
-
   hydrate: () => Promise<void>;
+  refresh: () => void;
 
-  recomputeEntitlement: () => void;
+  logDose: (d: Omit<DoseEvent, "id">) => Promise<void>;
+  logWeight: (w: Omit<WeightEntry, "id">) => Promise<void>;
+  logSideEffect: (s: Omit<SideEffectEntry, "id">) => Promise<void>;
+  logIntake: (i: Omit<IntakeEntry, "id">) => Promise<void>;
+  logStrength: (s: Omit<StrengthCheckin, "id">) => Promise<void>;
+  addVial: (v: Omit<Vial, "id">) => Promise<void>;
+
   startTrial: () => Promise<void>;
-  openCheckout: (planId: Plan["id"]) => Promise<BillingResult>;
-  purchaseViaStore: (planId: Plan["id"]) => Promise<BillingResult>;
-  restorePurchases: () => Promise<BillingResult>;
+  applyConfirmedPurchase: (
+    channel: PurchaseChannel,
+    result: PurchaseResult,
+  ) => Promise<void>;
 
   saveReminder: (reminder: Reminder) => Promise<void>;
-
-  logDose: (input: LogDoseInput) => Promise<void>;
-  deleteDose: (id: string) => Promise<void>;
-  logWeight: (input: LogWeightInput) => Promise<void>;
-  deleteWeight: (id: string) => Promise<void>;
-  logSideEffect: (input: LogSideEffectInput) => Promise<void>;
-  deleteSideEffect: (id: string) => Promise<void>;
-  logIntake: (input: LogIntakeInput) => Promise<void>;
-  deleteIntake: (id: string) => Promise<void>;
-  logStrength: (input: LogStrengthInput) => Promise<void>;
-  deleteStrength: (id: string) => Promise<void>;
-  addVial: (input: AddVialInput) => Promise<void>;
-  deleteVial: (id: string) => Promise<void>;
-  saveStack: (name: string, compoundIds: string[], id?: string) => Promise<void>;
-  deleteStack: (id: string) => Promise<void>;
+  saveStack: (name: string, compoundIds: string[], id?: string) => void;
+  deleteStack: (id: string) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   mode: null,
-  setMode: (mode) => set({ mode }),
+  setMode: (mode) => {
+    set({ mode });
+    savePrefs({ mode, reminders: get().reminders, stacks: get().stacks });
+  },
 
   screen: "home",
   setScreen: (screen) => set({ screen }),
 
   hydrated: false,
-  medications: [],
-  doseEvents: [],
-  weightEntries: [],
+  doses: [],
+  weights: [],
   sideEffects: [],
-  intakeEntries: [],
-  strengthCheckins: [],
+  intake: [],
+  strength: [],
   vials: [],
-  stacks: [],
+  entitlement: { tier: "free" },
+
   reminders: DEFAULT_REMINDERS,
+  stacks: [],
+
   compoundedEnabled: COMPOUNDED_ENABLED,
   educationEnabled: EDUCATION_ENABLED,
   educationArticleId: null,
   setEducationArticle: (id) => set({ educationArticleId: id }),
-  entitlement: null,
-  premium: false,
-  trialDaysLeft: null,
-  plans: PLANS,
 
-  hydrate: async () => {
-    const [
-      medications,
-      doseEvents,
-      weightEntries,
-      sideEffects,
-      intakeEntries,
-      strengthCheckins,
-      vials,
-      stacks,
-      storedReminders,
-      entitlement,
-    ] = await Promise.all([
-      db.medications.all(),
-      db.doseEvents.all(),
-      db.weightEntries.all(),
-      db.sideEffects.all(),
-      db.intakeEntries.all(),
-      db.strengthCheckins.all(),
-      db.vials.all(),
-      db.stacks.all(),
-      db.reminders.all(),
-      db.entitlement.get(),
-    ]);
-    // Always surface both reminder kinds; overlay any stored prefs onto defaults.
-    const reminders = DEFAULT_REMINDERS.map(
-      (d) => storedReminders.find((r) => r.id === d.id) ?? d,
-    );
-    const now = Date.now();
+  refresh: () => {
+    const s = repo.snapshot();
     set({
-      medications,
-      doseEvents: doseEvents.sort(byNewest),
-      weightEntries: weightEntries.sort(byNewest),
-      sideEffects: sideEffects.sort(byNewest),
-      intakeEntries: intakeEntries.sort(byNewest),
-      strengthCheckins: strengthCheckins.sort(byNewest),
-      vials: vials.sort((a, b) => b.reconDate.localeCompare(a.reconDate)),
-      stacks: stacks.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-      reminders,
-      entitlement: entitlement ?? null,
-      premium: computeIsPremium(entitlement ?? null, now),
-      trialDaysLeft: computeTrialDaysLeft(entitlement ?? null, now),
-      hydrated: true,
+      doses: [...s.doses].sort(byNewest),
+      weights: [...s.weights].sort(byNewest),
+      sideEffects: [...s.sideEffects].sort(byNewest),
+      intake: [...s.intake].sort(byNewest),
+      strength: [...s.strength].sort(byNewest),
+      vials: [...s.vials].sort((a, b) => b.reconAt - a.reconAt),
+      entitlement: s.entitlement,
     });
-    // Re-arm enabled reminders (web timers don't survive a reload; native is a
-    // cheap reschedule of the same ids).
-    for (const r of reminders) {
-      if (r.enabled) void scheduleReminder(r);
-    }
   },
 
-  recomputeEntitlement: () => {
-    const now = Date.now();
-    const ent = get().entitlement;
+  hydrate: async () => {
+    await repo.init();
+    const prefs = loadPrefs();
+    get().refresh();
     set({
-      premium: computeIsPremium(ent, now),
-      trialDaysLeft: computeTrialDaysLeft(ent, now),
+      mode: prefs.mode,
+      reminders: prefs.reminders,
+      stacks: prefs.stacks,
+      hydrated: true,
     });
+    for (const r of prefs.reminders) if (r.enabled) void scheduleReminder(r);
+  },
+
+  logDose: async (d) => {
+    await repo.addDose(d);
+    get().refresh();
+  },
+  logWeight: async (w) => {
+    await repo.addWeight(w);
+    get().refresh();
+  },
+  logSideEffect: async (s) => {
+    await repo.addSideEffect(s);
+    get().refresh();
+  },
+  logIntake: async (i) => {
+    await repo.addIntake(i);
+    get().refresh();
+  },
+  logStrength: async (s) => {
+    await repo.addStrength(s);
+    get().refresh();
+  },
+  addVial: async (v) => {
+    await repo.addVial(v);
+    get().refresh();
   },
 
   startTrial: async () => {
-    const ent = makeTrial(Date.now());
-    await db.entitlement.save(ent);
-    await captureBillingEvent({ type: "trial_start" });
-    set({ entitlement: ent });
-    get().recomputeEntitlement();
+    const ent = makeTrial(Date.now(), 7, repo.entitlement());
+    await repo.setEntitlement(ent);
+    get().refresh();
   },
-
-  openCheckout: async (planId) => {
-    const plan = PLANS.find((p) => p.id === planId);
-    if (!plan) return { ok: false, reason: "Unknown plan." };
-    const res = await billingOpenCheckout(plan);
-    get().recomputeEntitlement();
-    return res;
-  },
-
-  purchaseViaStore: async (planId) => {
-    const plan = PLANS.find((p) => p.id === planId);
-    if (!plan) return { ok: false, reason: "Unknown plan." };
-    return billingPurchaseViaStore(plan);
-  },
-
-  restorePurchases: async () => {
-    const res = await billingRestore();
-    get().recomputeEntitlement();
-    return res;
+  applyConfirmedPurchase: async (channel, result) => {
+    const ent = applyPurchase(channel, result, repo.entitlement());
+    await repo.setEntitlement(ent);
+    get().refresh();
   },
 
   saveReminder: async (reminder) => {
-    await db.reminders.save(reminder);
-    await scheduleReminder(reminder); // schedules if enabled, cancels if not
-    set((s) => ({
-      reminders: s.reminders.map((r) => (r.id === reminder.id ? reminder : r)),
-    }));
-  },
-
-  logDose: async (input) => {
-    // Ensure a Medication exists for this catalog compound, then attach the dose.
-    let medication = get().medications.find(
-      (m) => m.compoundId === input.compoundId,
+    const reminders = get().reminders.map((r) =>
+      r.id === reminder.id ? reminder : r,
     );
-    if (!medication) {
-      const compound = getCompound(input.compoundId);
-      medication = {
-        id: newId(),
-        compoundId: input.compoundId,
-        name: compound?.displayName ?? input.compoundId,
-        type: compound?.route === "oral" ? "oral" : "injectable",
-        origin: get().mode === "compounded" ? "compounded" : "brand",
-      };
-      await db.medications.save(medication);
-      set((s) => ({ medications: [...s.medications, medication!] }));
-    }
-
-    const dose: DoseEvent = {
-      id: newId(),
-      medicationId: medication.id,
-      dose: input.dose,
-      doseUnit: input.doseUnit,
-      datetime: input.datetime,
-      injectionSite: input.injectionSite,
-    };
-    await db.doseEvents.save(dose);
-    set((s) => ({ doseEvents: [dose, ...s.doseEvents].sort(byNewest) }));
+    set({ reminders });
+    savePrefs({ mode: get().mode, reminders, stacks: get().stacks });
+    await scheduleReminder(reminder);
   },
 
-  deleteDose: async (id) => {
-    await db.doseEvents.remove(id);
-    set((s) => ({ doseEvents: s.doseEvents.filter((d) => d.id !== id) }));
-  },
-
-  logWeight: async (input) => {
-    const entry: WeightEntry = { id: newId(), ...input };
-    await db.weightEntries.save(entry);
-    set((s) => ({ weightEntries: [entry, ...s.weightEntries].sort(byNewest) }));
-  },
-
-  deleteWeight: async (id) => {
-    await db.weightEntries.remove(id);
-    set((s) => ({ weightEntries: s.weightEntries.filter((w) => w.id !== id) }));
-  },
-
-  logSideEffect: async (input) => {
-    const entry: SideEffectEntry = { id: newId(), ...input };
-    await db.sideEffects.save(entry);
-    set((s) => ({ sideEffects: [entry, ...s.sideEffects].sort(byNewest) }));
-  },
-
-  deleteSideEffect: async (id) => {
-    await db.sideEffects.remove(id);
-    set((s) => ({ sideEffects: s.sideEffects.filter((e) => e.id !== id) }));
-  },
-
-  logIntake: async (input) => {
-    const entry: IntakeEntry = { id: newId(), ...input };
-    await db.intakeEntries.save(entry);
-    set((s) => ({
-      intakeEntries: [entry, ...s.intakeEntries].sort(byNewest),
-    }));
-  },
-
-  deleteIntake: async (id) => {
-    await db.intakeEntries.remove(id);
-    set((s) => ({
-      intakeEntries: s.intakeEntries.filter((e) => e.id !== id),
-    }));
-  },
-
-  logStrength: async (input) => {
-    const entry: StrengthCheckin = { id: newId(), ...input };
-    await db.strengthCheckins.save(entry);
-    set((s) => ({
-      strengthCheckins: [entry, ...s.strengthCheckins].sort(byNewest),
-    }));
-  },
-
-  deleteStrength: async (id) => {
-    await db.strengthCheckins.remove(id);
-    set((s) => ({
-      strengthCheckins: s.strengthCheckins.filter((e) => e.id !== id),
-    }));
-  },
-
-  addVial: async (input) => {
-    const vial: Vial = { id: newId(), ...input };
-    await db.vials.save(vial);
-    set((s) => ({
-      vials: [vial, ...s.vials].sort((a, b) =>
-        b.reconDate.localeCompare(a.reconDate),
-      ),
-    }));
-  },
-
-  deleteVial: async (id) => {
-    await db.vials.remove(id);
-    set((s) => ({ vials: s.vials.filter((v) => v.id !== id) }));
-  },
-
-  saveStack: async (name, compoundIds, id) => {
+  saveStack: (name, compoundIds, id) => {
     const existing = id ? get().stacks.find((s) => s.id === id) : undefined;
     const stack: Stack = {
-      id: existing?.id ?? newId(),
+      id: existing?.id ?? newLocalId(),
       name,
       compoundIds,
-      createdAt: existing?.createdAt ?? nowIso(),
+      createdAt: existing?.createdAt ?? Date.now(),
     };
-    await db.stacks.save(stack);
-    set((s) => {
-      const others = s.stacks.filter((x) => x.id !== stack.id);
-      return {
-        stacks: [stack, ...others].sort((a, b) =>
-          b.createdAt.localeCompare(a.createdAt),
-        ),
-      };
-    });
+    const stacks = [stack, ...get().stacks.filter((s) => s.id !== stack.id)].sort(
+      (a, b) => b.createdAt - a.createdAt,
+    );
+    set({ stacks });
+    savePrefs({ mode: get().mode, reminders: get().reminders, stacks });
   },
-
-  deleteStack: async (id) => {
-    await db.stacks.remove(id);
-    set((s) => ({ stacks: s.stacks.filter((x) => x.id !== id) }));
+  deleteStack: (id) => {
+    const stacks = get().stacks.filter((s) => s.id !== id);
+    set({ stacks });
+    savePrefs({ mode: get().mode, reminders: get().reminders, stacks });
   },
 }));
-
-export { nowIso };
